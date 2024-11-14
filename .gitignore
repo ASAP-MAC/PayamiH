@@ -1,0 +1,9 @@
+# genomic data #
+################
+Data/TOPMed_imputed_genotypes/
+Data/sampleNames
+
+# don't include R data, which I use as dump or working files
+
+*.RData
+*.Rdata
