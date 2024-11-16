@@ -1,0 +1,353 @@
+---
+title: "PD, microbiome and host genetics"
+author: "Giacomo Antonello, Zachary D. Wallen, Chad Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: hide
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+```
+
+```{r}
+# Check and install necessary CRAN packages
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
+
+install.packages(
+  CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
+)
+
+# Check and install necessary Bioconductor packages
+BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+
+BiocManager::install(
+  BioC_required_packages[!(BioC_required_packages %in% installed.packages())], ask = FALSE, update = TRUE 
+)
+
+# load basic data manipulation packagesß
+library(phyloseq)
+library(DT)
+library(kableExtra)
+library(MultiAssayExperiment)
+library(tidyverse)
+# load previously wrangled data
+load("../Data/wallenZD_data.mae.RData")
+```
+
+# Assocation between PD markers and PD genetics
+
+## Table of biomarkers
+
+```{r}
+biomarkers_medrxiv.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
+
+datatable(biomarkers_medrxiv.df %>% select(-original_taxon_name))
+```
+
+
+Step 1, get list of genetic variants found in WallenZD under the `SNCA` and 
+`HLA` gene annotations.
+
+```{r}
+# remove samples that were collected with swabs instead of the correct kit
+samples_no_swab <- colData(wallenZD_data.mae)$sample_name[colData(wallenZD_data.mae)$collection_method != "swab"]
+#
+variants_SNCA_HLA <- rownames(rowData(wallenZD_data.mae[["genotypes.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes.se"]])$GENE),])
+
+bugs_signatures <- biomarkers_medrxiv.df$original_taxon_name
+
+genotypes_with_metadata <- assay(wallenZD_data.mae, "genotypes.se")[variants_SNCA_HLA,intersect(samples_no_swab, colnames(assay(wallenZD_data.mae, "genotypes.se")))] %>% 
+  t() %>% 
+  as.data.frame() %>%
+  mutate_all(.funs = function(x) case_when(
+    x == "0|0" ~ "HomRef",
+    x == "1|1" ~ "HomAlt",
+    TRUE ~ "Het"
+  ) %>% factor(levels = c("HomRef", "Het", "HomAlt"))) %>% 
+  rownames_to_column("sample_name") %>% 
+  inner_join(as.data.frame(colData(wallenZD_data.mae)), by = "sample_name") %>% 
+  filter(sample_name %in%  samples_no_swab) 
+
+rownames(genotypes_with_metadata) <-  genotypes_with_metadata$sample_name
+```
+
+Step 2, perform the model, with the following formula
+
+Group microbiome features together by summing their abundances, followed by log
+transformation.
+
+$$
+bug \sim 
+$$
+
+Step 3, perform additive associations
+
+```{r bugs and genetics with Maaslin2}
+
+microbes_matrix <- as.matrix(assay(wallenZD_data.mae, "metaphlan_RelAbund.se"))[bugs_signatures,genotypes_with_metadata$sample_name] / 100
+
+dir.create("output/genetics_vs_microbes_PD/Maaslin2", recursive = TRUE, showWarnings = FALSE)
+
+maaslin_per_variant <- lapply(variants_SNCA_HLA,
+       function(rsid)
+         Maaslin2::Maaslin2(
+           input_data = t(microbes_matrix),
+           input_metadata = genotypes_with_metadata,
+           output = file.path("output/genetics_vs_microbes_PD/Maaslin2",rsid),
+  fixed_effects = c(rsid, "Case_status", paste("Case_status", rsid, sep = "*"), "seqs_scaled", "Age_at_collection"),
+  # min_prevalence = 0.05,
+  normalization = 'NONE',
+  max_significance = 0.05,
+  standardize = FALSE,
+  plot_heatmap = FALSE,
+  plot_scatter = FALSE,
+  heatmap_first_n = 0
+  )
+)
+
+rsID_associations_bimarker_bugs_PD.list <- lapply(maaslin_per_variant, "[[", "results") %>%
+  lapply(filter, grepl("^rs", metadata))
+
+```
+
+```{r bugs and genetics with ANCOMBC}
+ps.counts_genetics <- phyloseq(
+        otu_table(
+          as.matrix(assay(wallenZD_data.mae, "metaphlan_Counts.se"))[bugs_signatures,genotypes_with_metadata$sample_name] / 100, taxa_are_rows = TRUE),
+        tax_table(as.matrix(rowData(wallenZD_data.mae[["metaphlan_Counts.se"]]))[bugs_signatures,]),
+        sample_data(genotypes_with_metadata)
+      )
+
+dir.create("output/genetics_vs_microbes_PD/ANCOMBC", recursive = TRUE, showWarnings = FALSE)
+
+for(rsid in variants_SNCA_HLA){
+  tmp_res <- tryCatch(
+    ANCOMBC::ancombc(
+      data = ps.counts_genetics,
+      prv_cut = 0.05,
+      formula = paste(
+        c(
+          rsid,
+          "Case_status",
+          paste("Case_status", rsid, sep = "*"),
+          "seqs_scaled",
+          "Age_at_collection"
+        ),
+        collapse = " + "
+      ),
+      p_adj_method = "BH",
+      verbose = FALSE,
+      alpha = 0.1,
+      n_cl = 4 
+    ),
+    error = function(e)
+      return(e)
+  )
+  saveRDS(
+    tmp_res,
+    paste0(
+      "output/genetics_vs_microbes_PD/ANCOMBC/ancombc_results_",
+      rsid,
+      "_raw.Rds"
+    )
+  )
+  
+}
+```
+
+```{r summary diff abund maaslin2}
+
+
+
+```
+
+See results for `SNCA` genes, just effect of variant
+
+```{r summary results SNCA genes}
+snca_variants.df <- rowData(wallenZD_data.mae[["genotypes.se"]]) %>% 
+  as.data.frame %>% 
+  filter(grepl("SNCA", GENE))
+
+datatable(snca_variants.df)
+```
+
+```{r}
+ANCOMBC_raw_results <- list.files("output/genetics_vs_microbes_PD/ANCOMBC", full.names = TRUE) %>%
+  set_names(str_extract(base::basename(.), "rs[0-9]*")) %>% 
+  lapply(readRDS) %>% 
+  # remove ancombc results that failed in the step above
+  .[!grepl("error", sapply(., class))] %>% 
+  lapply("[[", "res") %>% 
+  purrr::transpose()
+
+
+just_rs_lfc <- lapply(ANCOMBC_raw_results$lfc, function(x) x[,c(1,3,4)]) %>% 
+  lapply(set_names, c("taxon", "Het", "Alt")) %>% 
+  bind_rows(.id = "rsID")
+
+head(just_rs_lfc)
+
+ggplot(just_rs_lfc %>% pivot_longer(names_to = "Genotype", values_to = "lfc", cols = c("Het", "Alt")) %>% mutate(Genotype = factor(Genotype, levels = c("Het", "Alt"))), 
+       aes(x = rsID, y = lfc, fill = Genotype)) +
+  geom_col(position = position_dodge())+
+  scale_color_manual(values = c("gray", "black")) +
+  facet_wrap(~taxon) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(
+    title = "SNCA variants"
+  )
+
+```
+
+
+```{r summary diff abund ancom}
+ANCOMBC_raw_results <- list.files("output/genetics_vs_microbes_PD/ANCOMBC", full.names = TRUE) %>%
+  set_names(str_extract(base::basename(.), "rs[0-9]*")) %>% 
+  lapply(readRDS) %>% 
+  # remove ancombc results that failed in the step above
+  .[!grepl("error", sapply(., class))] %>% 
+  lapply("[[", "res") %>% 
+  # extract results
+  lapply(function(df) lapply(df, select, !contains(c("seqs_scaled","Age_at_collection")))) #%>% 
+  lapply(bind_cols) #%>% 
+  rename_all(.funs = function(x) str_remove(x, "\\.Case_statusPD")) %>% 
+  mutate(
+    taxon = ancombc_results_raw$res$lfc$taxon,
+    FC = exp(lfc)
+    ) %>% 
+  relocate(taxon, lfc, FC) %>% 
+  arrange(taxon)
+  
+
+list.files("output/genetics_vs_microbes_PD/ANCOMBC", full.names = TRUE) 
+
+```
+
+# alternative to clusters for biomarkers, variable importance in machine learning
+
+```{r}
+library(siamcat)
+```
+
+### R reimplementation of sparcc
+
+SparCC is problematic on the Cheaha server, somehow the permutations step won't 
+work.
+
+```{r}
+devtools::install_github("zdk123/SpiecEasi")
+
+library(SpiecEasi)
+
+PD_sparcc_base <- sparcc(
+  assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
+  .[rowSums(.) > 0,PD_samples] %>% 
+  rownames_to_column("OTU_id") %>% 
+  filter(OTU_id != "UNKNOWN") %>% 
+    column_to_rownames("OTU_id"), 
+  iter = 100, th = 0.2)
+
+PD_sparcc_boot <- sparccboot(data = assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
+  .[rowSums(.) > 0,PD_samples] %>% 
+  rownames_to_column("OTU_id") %>% 
+  filter(OTU_id != "UNKNOWN") %>% 
+    column_to_rownames("OTU_id"), R = 1000)
+
+saveRDS(PD_sparcc_boot, "PD_sparcc_boot.Rds")
+#sparcc_pvalues <- pval.sparccboot(PD_sparcc_boot)
+```
+
+```{r}
+biomarkers_table_list.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
+
+datatable(biomarkers_table_list.df)
+```
+
+## command line SparCC approach (not working anymore)
+
+```{r, eval=FALSE}
+
+control_samples <- colData(wallenZD_data.mae)$sample_name[colData(wallenZD_data.mae)$Case_status == "Control"]
+PD_samples <- colData(wallenZD_data.mae)$sample_name[colData(wallenZD_data.mae)$Case_status == "PD"]
+
+dir.create("output/SparCC/input_tables/bootstrapped_tables", recursive = TRUE, showWarnings = FALSE)
+dir.create("output/SparCC/SparCC_results", recursive = TRUE, showWarnings = FALSE)
+
+# write features table without all-zero columns formatted as SparCC likes them
+
+assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
+  .[rowSums(.) > 0,PD_samples] %>% 
+  rownames_to_column("OTU_id") %>% 
+  filter(OTU_id != "UNKNOWN") %>% 
+  write_tsv(file = "output/SparCC/input_tables/features_counts_PD.tsv")
+
+assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
+  .[rowSums(.) > 0,control_samples] %>% 
+  rownames_to_column("OTU_id") %>% 
+  filter(OTU_id != "UNKNOWN") %>% 
+  write_tsv(file = "output/SparCC/input_tables/features_counts_HC.tsv")
+
+
+```
+
+```{bash, eval=FALSE}
+# mamba gave issues with setting up this particular environment, so I will need to use conda
+module add Anaconda3
+
+#installing without the following step results in an error:
+
+conda config --set channel_priority disabled
+
+conda env create -f /data/project/payami-lab/payamilab/fastspar.yaml
+
+conda activate fastspar
+```
+
+
+```{bash sparcc on PD, eval=FALSE}
+cd ~/PayamiH/project_1_microGenPD/output/SparCC/
+
+srun -c8 --mem=32G -pshort --pty bash
+
+fastspar --iterations 100 --threads 10 --threshold 0.1 --seed 1234 --otu_table input_tables/features_counts_PD.tsv --correlation SparCC_results/Species_SparCC_PD_Cor_Matrix.txt --covariance SparCC_results/Species_SparCC_PD_Cov_Matrix.txt
+
+fastspar_bootstrap --otu_table input_tables/features_counts_PD.tsv --number 1000 --prefix input_tables/bootstrapped_tables/PD_
+
+fastspar --iterations 100 --threads 8 --threshold 0.1 --seed 1234 --otu_table input_tables/features_counts_PD.tsv \--correlation SparCC_results/Species_SparCC_PD_Cor_Matrix.txt --covariance SparCC_results/Species_SparCC_PD_Cov_Matrix.txt
+
+
+# calculate P-values in two steps
+
+```
+
+
+## Definition of subtypes based on Dirichlet Multinomial clustering
+
+# Association between top PD associated taxa and genotypes
+
+First challenge is defining top taxa. Haydeh chose based on signifincance 
+theshoulds and correlation network of the taxa. The strategy is below
+
+
+
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
