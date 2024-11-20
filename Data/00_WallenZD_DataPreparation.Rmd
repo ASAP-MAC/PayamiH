@@ -23,9 +23,9 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r}
+```{r, include=FALSE}
 # Check and install necessary CRAN packages
-CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl")
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
 
 install.packages(
   CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
@@ -33,19 +33,28 @@ install.packages(
 
 # Check and install necessary Bioconductor packages
 BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
 
-BiocManager::install(
-  BioC_required_packages[!(BioC_required_packages %in% installed.packages())], ask = FALSE, update = TRUE 
-)
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
 
-# load basic data manipulation packagesß
-library(tidyverse)
+
+# load basic data manipulation packages
+library(phyloseq)
 library(DT)
-# ideally this should one day be a standalone package
-source("~/bin/biobakeryUtils/wrangle_metaphlan.R")
-source("~/bin/biobakeryUtils/complete_unknown_taxonomy.R")
-source("~/bin/biobakeryUtils/wrangle_humann.R")
+library(kableExtra)
+library(MultiAssayExperiment)
+library(tidyverse)
+# load previously wrangled data
+load("../Data/wallenZD_data.mae.RData")
 
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+
+sapply(list.files("~/bin/biobakeryUtils/", full.names = TRUE), source)
 ```
 
 # Directory and data preparation
@@ -64,7 +73,9 @@ cd PayamiH
 
 ## Work directories and genetic data
 
-1 - Data directories generation
+1 - Data directories generation. 
+**Maker sure you start from the base Git directory**
+
 
 ```{bash setup data directory, eval=FALSE}
 # TOPMed data
@@ -80,7 +91,7 @@ wget https://zenodo.org/records/7246185/files/Source_Data_24Oct2022.xlsx?downloa
 2 - bcftools setup
 
 ```{bash setup micromamba, eval=FALSE}
-cd ~ 
+cd ~
 
 curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj micromamba/bin
 ./bin/micromamba shell init -s bash -r ~/micromamba
@@ -110,9 +121,9 @@ for chr in `ls *.dose.vcf.gz`; do sbatch -c1 --mem 8G -pexpress --wrap "bcftools
   redundant but done anyway.
 
 ```{bash, eval=FALSE}
-mkdir -p ~/PayamiH/Data/sampleNames/
+cd ~/PayamiH/Data
 
-cd ~/PayamiH/Data/
+mkdir sampleNames/
 
 find TOPMed_imputed_genotypes_2022/ -type f -name "*.vcf.gz" -exec bcftools query -l {} \; >> sampleNames/sampleNamesAll.txt
 
@@ -185,8 +196,9 @@ rsid_to_CHR_POS <- biomaRt::getBM(
 
 write_tsv(rsid_to_CHR_POS, file = "GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv")
 
-lapply(unique(rsid_to_CHR_POS$CHROM), function(chr) 
-  writeLines(text = paste0(filter(rsid_to_CHR_POS, CHROM == chr)$CHROM, ":", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_START,"-", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt")))
+for(chr in unique(rsid_to_CHR_POS$CHROM)){
+  writeLines(text = paste0(filter(rsid_to_CHR_POS, CHROM == chr)$CHROM, ":", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_START,"-", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt"))
+}
 
 datatable(rsid_to_CHR_POS, caption = "Variants available in the GWAS catalog made unique based on the rsID. Additionally, Gene annotations were given preference over no annotation. Hence, they should be treated with caution. All annotations were done using the ensembl annotation resources in `biomaRt`.")
 ```
@@ -206,8 +218,8 @@ More specifically, we will work with dosages.
 
 Additionally, they must be available in WallenZD.
 
-```{r}
-gwasCatalog_variants_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
+```{r load variants dosages}
+gwasCatalog_variants_dosages_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
   select(CHROM, POS = CHROM_START, GENE, RSID) %>% 
   # force unique chrom and pos and group Genes and rsid together, this is redundant
   group_by(CHROM, POS) %>% 
@@ -216,16 +228,24 @@ gwasCatalog_variants_All <- data.table::fread("GWAS_catalog_PD_variants/PD_varia
     RSID = paste(RSID, collapse = ";")
   ) %>% as.data.frame()
 
-gwasCatalog_variants_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Dosages.txt", full.names = T) %>% 
+gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Dosages.txt", full.names = T) %>% 
   sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
-  lapply(inner_join, gwasCatalog_variants_All, by = c("CHROM", "POS")) %>% 
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
+  lapply(relocate, RSID, GENE, .after = ALT) %>% 
+  lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
+  purrr::reduce(rbind) %>% 
+  as.data.frame()
+
+gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
+  sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
   lapply(relocate, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
   as.data.frame()
 
 # summary table of variants found in the dataset
-nVars_by_genes_All <- gwasCatalog_variants_All %>% 
+nVars_by_genes_All <- gwasCatalog_variants_dosages_All %>% 
   mutate(
     `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
     `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
@@ -233,7 +253,7 @@ nVars_by_genes_All <- gwasCatalog_variants_All %>%
   .[,(ncol(.)-2):ncol(.)] %>% 
   colSums()
 
-nVars_by_genes_Wallen <- gwasCatalog_variants_in_WallenZD.df %>% 
+nVars_by_genes_Wallen <- gwasCatalog_variants_dosages_in_WallenZD.df %>% 
   mutate(
     `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
     `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
@@ -305,24 +325,40 @@ sample_metadata.df <- WallenZD_2022_metadata[samples_intersect,] %>%
 # manipulate genetics data a bit, to make it more usable in the SummarizedExperiment
 # context
 
-tmp <- gwasCatalog_variants_in_WallenZD.df
+tmp <- gwasCatalog_variants_dosages_in_WallenZD.df
 samples_intersect <- intersect(colnames(tmp), rownames(sample_metadata.df))
 metadata_cols_genetics <- grep("^D", colnames(tmp), value = TRUE, invert = T)
 variants_made_unique <- make.unique(tmp$RSID)
 rownames(tmp) <- variants_made_unique
 
-genetics_matrix<- as.matrix(tmp[variants_made_unique, samples_intersect])
+genetics_matrix_dosages <- as.matrix(tmp[variants_made_unique, samples_intersect])
+
+tmp <- gwasCatalog_variants_hardcalls_in_WallenZD.df
+samples_intersect <- intersect(colnames(tmp), rownames(sample_metadata.df))
+metadata_cols_genetics <- grep("^D", colnames(tmp), value = TRUE, invert = T)
+variants_made_unique <- make.unique(tmp$RSID)
+rownames(tmp) <- variants_made_unique
+
+genetics_matrix_hardcalls <- as.matrix(tmp[variants_made_unique, samples_intersect])
+
+
 genetics_metadata <- tmp[variants_made_unique, metadata_cols_genetics]
-sample_metadata <- sample_metadata.df[samples_intersect,]
+sample_metadata_genetics <- sample_metadata.df[samples_intersect,]
 
 library(MultiAssayExperiment, quietly = TRUE, verbose = FALSE)
 
 wallenZD_summarizedExperiments.list <- list(
-  genotypes.se = SummarizedExperiment(
-    assays = list("genotypes_dosages.se" = genetics_matrix),
+  genotypes_dosages.se = SummarizedExperiment(
+    assays = list("genotypes_dosages" = genetics_matrix_dosages, "genotypes_hardcalls" = genetics_matrix_hardcalls),
     rowData = genetics_metadata,
-  colData = sample_metadata
+  colData = sample_metadata_genetics
   ),
+  
+  genotypes_hardcalls.se = SummarizedExperiment(
+    assays = list("genotypes_hardcalls" = genetics_matrix_hardcalls),
+    rowData = genetics_metadata,
+  colData = sample_metadata_genetics
+  ), 
   
   metaphlan_RelAbund.se = SummarizedExperiment(
     assays = list("metaphlan_RelAbund" = WallenZD_2022_metaphlan_relab_wrangled$profiles),
@@ -369,9 +405,17 @@ wallenZD_data.mae <- MultiAssayExperiment(
 )
 ```
 
-
-```{r clean environment and memory for next analyses, echo=FALSE}
+```{r clean environment and memory for next analyses}
 
 save(wallenZD_data.mae, file = "wallenZD_data.mae.RData")
 
 ```
+
+```{r}
+wallenZD_data.mae
+```
+
+```{r}
+assays(wallenZD_data.mae)
+```
+

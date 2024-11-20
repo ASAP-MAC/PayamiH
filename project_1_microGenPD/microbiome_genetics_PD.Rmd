@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r}
+```{r, include=FALSE}
 # Check and install necessary CRAN packages
 CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
 
@@ -33,12 +33,16 @@ install.packages(
 
 # Check and install necessary Bioconductor packages
 BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
 
-BiocManager::install(
-  BioC_required_packages[!(BioC_required_packages %in% installed.packages())], ask = FALSE, update = TRUE 
-)
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
 
-# load basic data manipulation packagesß
+
+# load basic data manipulation packages
 library(phyloseq)
 library(DT)
 library(kableExtra)
@@ -46,6 +50,13 @@ library(MultiAssayExperiment)
 library(tidyverse)
 # load previously wrangled data
 load("../Data/wallenZD_data.mae.RData")
+
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+```
+
+```{r}
+wallenZD_data.mae
 ```
 
 # Assocation between PD markers and PD genetics
@@ -55,22 +66,53 @@ load("../Data/wallenZD_data.mae.RData")
 ```{r}
 biomarkers_medrxiv.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
 
+
+left_join(biomarkers_medrxiv.df, 
+          as.data.frame(assay(wallenZD_data.mae, "metaphlan_RelAbund.se")) %>%
+            rownames_to_column("species_metaphlan"), 
+          by = "species_metaphlan") %>% 
+  split.data.frame(f = .$cluster_name) %>% 
+  lapply(select, starts_with("D")) %>% 
+  lapply(colSums) %>% bind_cols()
 datatable(biomarkers_medrxiv.df %>% select(-original_taxon_name))
 ```
 
 
+## Genotype dosages
+
 Step 1, get list of genetic variants found in WallenZD under the `SNCA` and 
-`HLA` gene annotations.
+`HLA` gene annotations. 
+
+Inclusion-exclusion criteria:
+  
+  - Collection method not `swab` and samples must be in common between microbiome
+  and genetic assays
+  - Variants of interest should be mapped to `HLA` and `SNCA` genes
+  - samples should be in common (obviously)
+
+Then, build a "Parkinson Cluster total abundance". The first and easiest way is 
+to sum the abundances of the bugs in the same cluster.
+
+```{r}
+
+```
+
 
 ```{r}
 # remove samples that were collected with swabs instead of the correct kit
-samples_no_swab <- colData(wallenZD_data.mae)$sample_name[colData(wallenZD_data.mae)$collection_method != "swab"]
-#
-variants_SNCA_HLA <- rownames(rowData(wallenZD_data.mae[["genotypes.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes.se"]])$GENE),])
+genotypes_and_metaphlan <- wallenZD_data.mae[, , c("genotypes_dosages.se", "metaphlan_RelAbund.se")]
+
+genotypes_and_metaphlan[["metaphlan_RelAbund.se"]] <- genotypes_and_metaphlan[["metaphlan_RelAbund.se"]][, collection_method != "swab"]
+samples_no_swab
+
+# variants of interest should map genes
+variants_SNCA_HLA <- rownames(rowData(wallenZD_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes_dosages.se"]])$GENE),])
 
 bugs_signatures <- biomarkers_medrxiv.df$original_taxon_name
 
-genotypes_with_metadata <- assay(wallenZD_data.mae, "genotypes.se")[variants_SNCA_HLA,intersect(samples_no_swab, colnames(assay(wallenZD_data.mae, "genotypes.se")))] %>% 
+metadata_analysis <- 
+
+genotypes_with_metadata <- assay(wallenZD_data.mae, "genotypes_dosages.se")[variants_SNCA_HLA,intersect(samples_no_swab, colnames(assay(wallenZD_data.mae, "genotypes_dosages.se")))] %>% 
   t() %>% 
   as.data.frame() %>%
   mutate_all(.funs = function(x) case_when(
@@ -213,7 +255,6 @@ ggplot(just_rs_lfc %>% pivot_longer(names_to = "Genotype", values_to = "lfc", co
 
 ```
 
-
 ```{r summary diff abund ancom}
 ANCOMBC_raw_results <- list.files("output/genetics_vs_microbes_PD/ANCOMBC", full.names = TRUE) %>%
   set_names(str_extract(base::basename(.), "rs[0-9]*")) %>% 
@@ -231,53 +272,58 @@ ANCOMBC_raw_results <- list.files("output/genetics_vs_microbes_PD/ANCOMBC", full
     ) %>% 
   relocate(taxon, lfc, FC) %>% 
   arrange(taxon)
-  
+
 
 list.files("output/genetics_vs_microbes_PD/ANCOMBC", full.names = TRUE) 
 
 ```
 
-# alternative to clusters for biomarkers, variable importance in machine learning
+## command line SparCC approach (needs a `.yml` file)
+First you need this yaml file, in which all libraries work. Important: do 
+not follow the simple one-liner in the fastspar github page, because a library
+gives issues (`mkl`). Rather, copy-paste the following into a file named 
+`~/fastspar.yaml`.
 
-```{r}
-library(siamcat)
+```
+name: fastspar
+channels:
+- anaconda
+- bioconda
+- conda-forge
+dependencies:
+- _libgcc_mutex=0.1=conda_forge
+- _openmp_mutex=4.5=2_kmp_llvm
+- armadillo=12.6.4=h37e7c65_1
+- arpack=3.8.0=nompi_h0baa96a_101
+- fastspar=1.0.0=hac4c98c_5
+- gsl=2.7=he838d99_0
+- intel-openmp=2023.1.0=hdb19cb5_46305
+- libblas=3.9.0=18_linux64_openblas
+- libcblas=3.9.0=18_linux64_openblas
+- libffi=3.4.4=h6a678d5_0
+- libgcc-ng=13.2.0=h807b86a_2
+- libgfortran-ng=13.2.0=h69a702a_2
+- libgfortran5=13.2.0=ha4646dd_2
+- liblapack=3.9.0=18_linux64_openblas
+- libopenblas=0.3.24=openmp_h2e9423c_0
+- libstdcxx-ng=13.2.0=h7e041cc_2
+- libzlib=1.2.13=hd590300_5
+- llvm-openmp=17.0.2=h4dfa4b3_0
+- mkl=2023.1.0=h84fe81f_46349
+- openblas=0.3.24=openmp_h82c68e4_0
+- superlu=5.2.2=h00795ac_0
+- tbb=2021.8.0=hdb19cb5_0
+- zlib=1.2.13=hd590300_5
+- zstd=1.5.5=hfc55251_0
 ```
 
-### R reimplementation of sparcc
+```{bash, eval=FALSE}
+cd
 
-SparCC is problematic on the Cheaha server, somehow the permutations step won't 
-work.
+micromamba env create -f fastspar.yaml
 
-```{r}
-devtools::install_github("zdk123/SpiecEasi")
-
-library(SpiecEasi)
-
-PD_sparcc_base <- sparcc(
-  assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
-  .[rowSums(.) > 0,PD_samples] %>% 
-  rownames_to_column("OTU_id") %>% 
-  filter(OTU_id != "UNKNOWN") %>% 
-    column_to_rownames("OTU_id"), 
-  iter = 100, th = 0.2)
-
-PD_sparcc_boot <- sparccboot(data = assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% 
-  .[rowSums(.) > 0,PD_samples] %>% 
-  rownames_to_column("OTU_id") %>% 
-  filter(OTU_id != "UNKNOWN") %>% 
-    column_to_rownames("OTU_id"), R = 1000)
-
-saveRDS(PD_sparcc_boot, "PD_sparcc_boot.Rds")
-#sparcc_pvalues <- pval.sparccboot(PD_sparcc_boot)
+rm fastspar.yaml
 ```
-
-```{r}
-biomarkers_table_list.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
-
-datatable(biomarkers_table_list.df)
-```
-
-## command line SparCC approach (not working anymore)
 
 ```{r, eval=FALSE}
 
@@ -305,6 +351,8 @@ assay(wallenZD_data.mae, "metaphlan_Counts.se") %>%
 ```
 
 ```{bash, eval=FALSE}
+
+
 # mamba gave issues with setting up this particular environment, so I will need to use conda
 module add Anaconda3
 
@@ -312,7 +360,7 @@ module add Anaconda3
 
 conda config --set channel_priority disabled
 
-conda env create -f /data/project/payami-lab/payamilab/fastspar.yaml
+
 
 conda activate fastspar
 ```
@@ -342,6 +390,12 @@ fastspar --iterations 100 --threads 8 --threshold 0.1 --seed 1234 --otu_table in
 First challenge is defining top taxa. Haydeh chose based on signifincance 
 theshoulds and correlation network of the taxa. The strategy is below
 
+
+# BugSigDbR package to compare pre-published bugs
+
+```{r}
+
+```
 
 
 

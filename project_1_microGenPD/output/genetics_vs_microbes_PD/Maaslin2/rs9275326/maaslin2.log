@@ -1,107 +1,107 @@
-2024-11-15 18:40:53.312911 INFO::Writing function arguments to log file
-2024-11-15 18:40:53.313657 DEBUG::Function arguments
-2024-11-15 18:40:53.313982 DEBUG::Output folder: output/genetics_vs_microbes_PD/Maaslin2/rs9275326
-2024-11-15 18:40:53.314303 DEBUG::Min Abundance: 0.000000
-2024-11-15 18:40:53.31461 DEBUG::Min Prevalence: 0.100000
-2024-11-15 18:40:53.314916 DEBUG::Normalization: NONE
-2024-11-15 18:40:53.315229 DEBUG::Transform: LOG
-2024-11-15 18:40:53.315531 DEBUG::Analysis method: LM
-2024-11-15 18:40:53.315839 DEBUG::Max significance: 0.050000
-2024-11-15 18:40:53.316155 DEBUG::Random effects:
-2024-11-15 18:40:53.316644 DEBUG::Fixed effects: rs9275326,Case_status,Case_status*rs9275326,seqs_scaled,Age_at_collection
-2024-11-15 18:40:53.316966 DEBUG::Correction method: BH
-2024-11-15 18:40:53.317286 DEBUG::Standardize: FALSE
-2024-11-15 18:40:53.317593 DEBUG::Cores: 1
-2024-11-15 18:40:53.317885 INFO::Verifying options selected are valid
-2024-11-15 18:40:53.31846 INFO::Determining format of input files
-2024-11-15 18:40:53.319049 INFO::Input format is data samples as rows and metadata samples as rows
-2024-11-15 18:40:53.31982 DEBUG::A total of 696 samples were found in both the data and metadata
-2024-11-15 18:40:53.320134 DEBUG::Reordering data/metadata to use same sample ordering
-2024-11-15 18:40:53.321905 WARNING::Feature name not found in metadata so not applied to formula as fixed effect: Case_status*rs9275326
-2024-11-15 18:40:53.322655 INFO::Formula for fixed effects: expr ~  rs9275326 + Case_status + seqs_scaled + Age_at_collection
-2024-11-15 18:40:53.323287 INFO::Factor detected for categorial metadata 'rs9275326'. Provide a reference argument or manually set factor ordering to change reference level.
-2024-11-15 18:40:53.324025 INFO::Filter data based on min abundance and min prevalence
-2024-11-15 18:40:53.32455 INFO::Total samples in data: 696
-2024-11-15 18:40:53.325065 INFO::Min samples required with min abundance for a feature not to be filtered: 69.600000
-2024-11-15 18:40:53.326748 INFO::Total filtered features: 27
-2024-11-15 18:40:53.327333 INFO::Filtered feature names from abundance and prevalence filtering: s__Actinomyces_turicensis, s__Anaerococcus_octavius, s__Anaerococcus_vaginalis, s__Atopobium_minutum, s__Corynebacterium_amycolatum, s__Corynebacterium_aurimucosum, s__Finegoldia_magna, s__Gemella_asaccharolytica, s__Peptoniphilus_harei, s__Peptoniphilus_lacrimalis, s__Peptoniphilus_sp_HMSC062D09, s__Porphyromonas_asaccharolytica, s__Porphyromonas_sp_HMSC065F10, s__Porphyromonas_uenonis, s__Prevotella_bergensis, s__Prevotella_buccalis, s__Prevotella_disiens, s__Prevotella_timonensis, s__Varibaculum_cambriense, s__Bifidobacterium_gallinarum, s__Bifidobacterium_pullorum, s__Bifidobacterium_saeculare, s__Lactobacillus_gasseri, s__Lactobacillus_paragasseri, s__Lactobacillus_reuteri, s__Actinomyces_sp_oral_taxon_448, s__Streptococcus_lutetiensis
-2024-11-15 18:40:53.328866 INFO::Total filtered features with variance filtering: 0
-2024-11-15 18:40:53.329421 INFO::Filtered feature names from variance filtering:
-2024-11-15 18:40:53.329932 INFO::Running selected normalization method: NONE
-2024-11-15 18:40:53.330436 INFO::Bypass z-score application to metadata
-2024-11-15 18:40:53.330941 INFO::Running selected transform method: LOG
-2024-11-15 18:40:53.333825 INFO::Running selected analysis method: LM
-2024-11-15 18:40:53.334435 INFO::Fitting model to feature number 1, s__Bifidobacterium_dentium
-2024-11-15 18:40:53.337511 WARNING::Fitting problem for feature 1 returning NA
-2024-11-15 18:40:53.338297 INFO::Fitting model to feature number 2, s__Bifidobacterium_bifidum
-2024-11-15 18:40:53.341074 WARNING::Fitting problem for feature 2 returning NA
-2024-11-15 18:40:53.341838 INFO::Fitting model to feature number 3, s__Bifidobacterium_breve
-2024-11-15 18:40:53.344619 WARNING::Fitting problem for feature 3 returning NA
-2024-11-15 18:40:53.345385 INFO::Fitting model to feature number 4, s__Bifidobacterium_longum
-2024-11-15 18:40:53.349237 WARNING::Fitting problem for feature 4 returning NA
-2024-11-15 18:40:53.350001 INFO::Fitting model to feature number 5, s__Lactobacillus_fermentum
-2024-11-15 18:40:53.352797 WARNING::Fitting problem for feature 5 returning NA
-2024-11-15 18:40:53.353554 INFO::Fitting model to feature number 6, s__Lactobacillus_salivarius
-2024-11-15 18:40:53.356301 WARNING::Fitting problem for feature 6 returning NA
-2024-11-15 18:40:53.357053 INFO::Fitting model to feature number 7, s__Lactobacillus_rhamnosus
-2024-11-15 18:40:53.359838 WARNING::Fitting problem for feature 7 returning NA
-2024-11-15 18:40:53.360588 INFO::Fitting model to feature number 8, s__Actinomyces_naeslundii
-2024-11-15 18:40:53.363398 WARNING::Fitting problem for feature 8 returning NA
-2024-11-15 18:40:53.364154 INFO::Fitting model to feature number 9, s__Actinomyces_oris
-2024-11-15 18:40:53.366907 WARNING::Fitting problem for feature 9 returning NA
-2024-11-15 18:40:53.367656 INFO::Fitting model to feature number 10, s__Actinomyces_sp_HPA0247
-2024-11-15 18:40:53.370412 WARNING::Fitting problem for feature 10 returning NA
-2024-11-15 18:40:53.37116 INFO::Fitting model to feature number 11, s__Streptococcus_anginosus_group
-2024-11-15 18:40:53.3739 WARNING::Fitting problem for feature 11 returning NA
-2024-11-15 18:40:53.374652 INFO::Fitting model to feature number 12, s__Streptococcus_mutans
-2024-11-15 18:40:53.377436 WARNING::Fitting problem for feature 12 returning NA
-2024-11-15 18:40:53.378181 INFO::Fitting model to feature number 13, s__Streptococcus_vestibularis
-2024-11-15 18:40:53.380902 WARNING::Fitting problem for feature 13 returning NA
-2024-11-15 18:40:53.381646 INFO::Fitting model to feature number 14, s__Escherichia_coli
-2024-11-15 18:40:53.384377 WARNING::Fitting problem for feature 14 returning NA
-2024-11-15 18:40:53.385121 INFO::Fitting model to feature number 15, s__Klebsiella_pneumoniae
-2024-11-15 18:40:53.38792 WARNING::Fitting problem for feature 15 returning NA
-2024-11-15 18:40:53.388664 INFO::Fitting model to feature number 16, s__Klebsiella_quasipneumoniae
-2024-11-15 18:40:53.391404 WARNING::Fitting problem for feature 16 returning NA
-2024-11-15 18:40:53.392147 INFO::Fitting model to feature number 17, s__Blautia_wexlerae
-2024-11-15 18:40:53.394883 WARNING::Fitting problem for feature 17 returning NA
-2024-11-15 18:40:53.395623 INFO::Fitting model to feature number 18, s__Blautia_hansenii
-2024-11-15 18:40:53.398423 WARNING::Fitting problem for feature 18 returning NA
-2024-11-15 18:40:53.399169 INFO::Fitting model to feature number 19, s__Anaerostipes_hadrus
-2024-11-15 18:40:53.401949 WARNING::Fitting problem for feature 19 returning NA
-2024-11-15 18:40:53.402705 INFO::Fitting model to feature number 20, s__Clostridium_sp_CAG_58
-2024-11-15 18:40:53.405491 WARNING::Fitting problem for feature 20 returning NA
-2024-11-15 18:40:53.406244 INFO::Fitting model to feature number 21, s__Eubacterium_eligens
-2024-11-15 18:40:53.409 WARNING::Fitting problem for feature 21 returning NA
-2024-11-15 18:40:53.409758 INFO::Fitting model to feature number 22, s__Eubacterium_hallii
-2024-11-15 18:40:53.412601 WARNING::Fitting problem for feature 22 returning NA
-2024-11-15 18:40:53.41337 INFO::Fitting model to feature number 23, s__Eubacterium_ramulus
-2024-11-15 18:40:53.416123 WARNING::Fitting problem for feature 23 returning NA
-2024-11-15 18:40:53.416867 INFO::Fitting model to feature number 24, s__Eubacterium_rectale
-2024-11-15 18:40:53.419657 WARNING::Fitting problem for feature 24 returning NA
-2024-11-15 18:40:53.420404 INFO::Fitting model to feature number 25, s__Eubacterium_sp_CAG_38
-2024-11-15 18:40:53.423199 WARNING::Fitting problem for feature 25 returning NA
-2024-11-15 18:40:53.423939 INFO::Fitting model to feature number 26, s__Faecalibacterium_prausnitzii
-2024-11-15 18:40:53.426712 WARNING::Fitting problem for feature 26 returning NA
-2024-11-15 18:40:53.427463 INFO::Fitting model to feature number 27, s__Fusicatenibacter_saccharivorans
-2024-11-15 18:40:53.430339 WARNING::Fitting problem for feature 27 returning NA
-2024-11-15 18:40:53.431091 INFO::Fitting model to feature number 28, s__Roseburia_faecis
-2024-11-15 18:40:53.433865 WARNING::Fitting problem for feature 28 returning NA
-2024-11-15 18:40:53.434617 INFO::Fitting model to feature number 29, s__Roseburia_intestinalis
-2024-11-15 18:40:53.437497 WARNING::Fitting problem for feature 29 returning NA
-2024-11-15 18:40:53.438246 INFO::Fitting model to feature number 30, s__Roseburia_inulinivorans
-2024-11-15 18:40:53.441144 WARNING::Fitting problem for feature 30 returning NA
-2024-11-15 18:40:53.441898 INFO::Fitting model to feature number 31, s__Ruminococcus_bicirculans
-2024-11-15 18:40:53.444731 WARNING::Fitting problem for feature 31 returning NA
-2024-11-15 18:40:53.4455 INFO::Fitting model to feature number 32, s__Ruminococcus_lactaris
-2024-11-15 18:40:53.448361 WARNING::Fitting problem for feature 32 returning NA
-2024-11-15 18:40:53.455271 INFO::Counting total values for each feature
-2024-11-15 18:40:53.459635 INFO::Writing filtered data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data.tsv
-2024-11-15 18:40:53.482568 INFO::Writing filtered, normalized data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data_norm.tsv
-2024-11-15 18:40:53.503035 INFO::Writing filtered, normalized, transformed data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data_norm_transformed.tsv
-2024-11-15 18:40:53.534988 WARNING::Deleting existing residuals file: output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/residuals.rds
-2024-11-15 18:40:53.536396 INFO::Writing residuals to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/residuals.rds
-2024-11-15 18:40:53.537325 WARNING::Deleting existing fitted file: output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/fitted.rds
-2024-11-15 18:40:53.538308 INFO::Writing fitted values to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/fitted.rds
-2024-11-15 18:40:53.539114 INFO::Writing all results to file (ordered by increasing q-values): output/genetics_vs_microbes_PD/Maaslin2/rs9275326/all_results.tsv
-2024-11-15 18:40:53.540342 INFO::Writing the significant results (those which are less than or equal to the threshold of 0.050000 ) to file (ordered by increasing q-values): output/genetics_vs_microbes_PD/Maaslin2/rs9275326/significant_results.tsv
+2024-11-18 12:45:44.834682 INFO::Writing function arguments to log file
+2024-11-18 12:45:44.83536 DEBUG::Function arguments
+2024-11-18 12:45:44.835693 DEBUG::Output folder: output/genetics_vs_microbes_PD/Maaslin2/rs9275326
+2024-11-18 12:45:44.836021 DEBUG::Min Abundance: 0.000000
+2024-11-18 12:45:44.836344 DEBUG::Min Prevalence: 0.100000
+2024-11-18 12:45:44.836664 DEBUG::Normalization: NONE
+2024-11-18 12:45:44.836981 DEBUG::Transform: LOG
+2024-11-18 12:45:44.837291 DEBUG::Analysis method: LM
+2024-11-18 12:45:44.837602 DEBUG::Max significance: 0.050000
+2024-11-18 12:45:44.837909 DEBUG::Random effects:
+2024-11-18 12:45:44.838389 DEBUG::Fixed effects: rs9275326,Case_status,Case_status*rs9275326,seqs_scaled,Age_at_collection
+2024-11-18 12:45:44.838712 DEBUG::Correction method: BH
+2024-11-18 12:45:44.839035 DEBUG::Standardize: FALSE
+2024-11-18 12:45:44.839345 DEBUG::Cores: 1
+2024-11-18 12:45:44.839643 INFO::Verifying options selected are valid
+2024-11-18 12:45:44.840223 INFO::Determining format of input files
+2024-11-18 12:45:44.840782 INFO::Input format is data samples as rows and metadata samples as rows
+2024-11-18 12:45:44.841513 DEBUG::A total of 696 samples were found in both the data and metadata
+2024-11-18 12:45:44.841816 DEBUG::Reordering data/metadata to use same sample ordering
+2024-11-18 12:45:44.843593 WARNING::Feature name not found in metadata so not applied to formula as fixed effect: Case_status*rs9275326
+2024-11-18 12:45:44.844304 INFO::Formula for fixed effects: expr ~  rs9275326 + Case_status + seqs_scaled + Age_at_collection
+2024-11-18 12:45:44.844885 INFO::Factor detected for categorial metadata 'rs9275326'. Provide a reference argument or manually set factor ordering to change reference level.
+2024-11-18 12:45:44.84558 INFO::Filter data based on min abundance and min prevalence
+2024-11-18 12:45:44.846122 INFO::Total samples in data: 696
+2024-11-18 12:45:44.846643 INFO::Min samples required with min abundance for a feature not to be filtered: 69.600000
+2024-11-18 12:45:44.848323 INFO::Total filtered features: 27
+2024-11-18 12:45:44.848873 INFO::Filtered feature names from abundance and prevalence filtering: s__Actinomyces_turicensis, s__Anaerococcus_octavius, s__Anaerococcus_vaginalis, s__Atopobium_minutum, s__Corynebacterium_amycolatum, s__Corynebacterium_aurimucosum, s__Finegoldia_magna, s__Gemella_asaccharolytica, s__Peptoniphilus_harei, s__Peptoniphilus_lacrimalis, s__Peptoniphilus_sp_HMSC062D09, s__Porphyromonas_asaccharolytica, s__Porphyromonas_sp_HMSC065F10, s__Porphyromonas_uenonis, s__Prevotella_bergensis, s__Prevotella_buccalis, s__Prevotella_disiens, s__Prevotella_timonensis, s__Varibaculum_cambriense, s__Bifidobacterium_gallinarum, s__Bifidobacterium_pullorum, s__Bifidobacterium_saeculare, s__Lactobacillus_gasseri, s__Lactobacillus_paragasseri, s__Lactobacillus_reuteri, s__Actinomyces_sp_oral_taxon_448, s__Streptococcus_lutetiensis
+2024-11-18 12:45:44.850403 INFO::Total filtered features with variance filtering: 0
+2024-11-18 12:45:44.850967 INFO::Filtered feature names from variance filtering:
+2024-11-18 12:45:44.851483 INFO::Running selected normalization method: NONE
+2024-11-18 12:45:44.851974 INFO::Bypass z-score application to metadata
+2024-11-18 12:45:44.852466 INFO::Running selected transform method: LOG
+2024-11-18 12:45:44.85524 INFO::Running selected analysis method: LM
+2024-11-18 12:45:44.855813 INFO::Fitting model to feature number 1, s__Bifidobacterium_dentium
+2024-11-18 12:45:44.85856 WARNING::Fitting problem for feature 1 returning NA
+2024-11-18 12:45:44.859329 INFO::Fitting model to feature number 2, s__Bifidobacterium_bifidum
+2024-11-18 12:45:44.862078 WARNING::Fitting problem for feature 2 returning NA
+2024-11-18 12:45:44.862839 INFO::Fitting model to feature number 3, s__Bifidobacterium_breve
+2024-11-18 12:45:44.865639 WARNING::Fitting problem for feature 3 returning NA
+2024-11-18 12:45:44.866406 INFO::Fitting model to feature number 4, s__Bifidobacterium_longum
+2024-11-18 12:45:44.870361 WARNING::Fitting problem for feature 4 returning NA
+2024-11-18 12:45:44.871123 INFO::Fitting model to feature number 5, s__Lactobacillus_fermentum
+2024-11-18 12:45:44.873933 WARNING::Fitting problem for feature 5 returning NA
+2024-11-18 12:45:44.874727 INFO::Fitting model to feature number 6, s__Lactobacillus_salivarius
+2024-11-18 12:45:44.886993 WARNING::Fitting problem for feature 6 returning NA
+2024-11-18 12:45:44.887718 INFO::Fitting model to feature number 7, s__Lactobacillus_rhamnosus
+2024-11-18 12:45:44.890436 WARNING::Fitting problem for feature 7 returning NA
+2024-11-18 12:45:44.891176 INFO::Fitting model to feature number 8, s__Actinomyces_naeslundii
+2024-11-18 12:45:44.893956 WARNING::Fitting problem for feature 8 returning NA
+2024-11-18 12:45:44.894722 INFO::Fitting model to feature number 9, s__Actinomyces_oris
+2024-11-18 12:45:44.897405 WARNING::Fitting problem for feature 9 returning NA
+2024-11-18 12:45:44.898142 INFO::Fitting model to feature number 10, s__Actinomyces_sp_HPA0247
+2024-11-18 12:45:44.90086 WARNING::Fitting problem for feature 10 returning NA
+2024-11-18 12:45:44.901573 INFO::Fitting model to feature number 11, s__Streptococcus_anginosus_group
+2024-11-18 12:45:44.904292 WARNING::Fitting problem for feature 11 returning NA
+2024-11-18 12:45:44.905001 INFO::Fitting model to feature number 12, s__Streptococcus_mutans
+2024-11-18 12:45:44.907661 WARNING::Fitting problem for feature 12 returning NA
+2024-11-18 12:45:44.9084 INFO::Fitting model to feature number 13, s__Streptococcus_vestibularis
+2024-11-18 12:45:44.911004 WARNING::Fitting problem for feature 13 returning NA
+2024-11-18 12:45:44.911728 INFO::Fitting model to feature number 14, s__Escherichia_coli
+2024-11-18 12:45:44.914369 WARNING::Fitting problem for feature 14 returning NA
+2024-11-18 12:45:44.915101 INFO::Fitting model to feature number 15, s__Klebsiella_pneumoniae
+2024-11-18 12:45:44.917742 WARNING::Fitting problem for feature 15 returning NA
+2024-11-18 12:45:44.918449 INFO::Fitting model to feature number 16, s__Klebsiella_quasipneumoniae
+2024-11-18 12:45:44.921198 WARNING::Fitting problem for feature 16 returning NA
+2024-11-18 12:45:44.921898 INFO::Fitting model to feature number 17, s__Blautia_wexlerae
+2024-11-18 12:45:44.924594 WARNING::Fitting problem for feature 17 returning NA
+2024-11-18 12:45:44.925307 INFO::Fitting model to feature number 18, s__Blautia_hansenii
+2024-11-18 12:45:44.927929 WARNING::Fitting problem for feature 18 returning NA
+2024-11-18 12:45:44.928663 INFO::Fitting model to feature number 19, s__Anaerostipes_hadrus
+2024-11-18 12:45:44.931377 WARNING::Fitting problem for feature 19 returning NA
+2024-11-18 12:45:44.932113 INFO::Fitting model to feature number 20, s__Clostridium_sp_CAG_58
+2024-11-18 12:45:44.934772 WARNING::Fitting problem for feature 20 returning NA
+2024-11-18 12:45:44.935556 INFO::Fitting model to feature number 21, s__Eubacterium_eligens
+2024-11-18 12:45:44.938247 WARNING::Fitting problem for feature 21 returning NA
+2024-11-18 12:45:44.938955 INFO::Fitting model to feature number 22, s__Eubacterium_hallii
+2024-11-18 12:45:44.941752 WARNING::Fitting problem for feature 22 returning NA
+2024-11-18 12:45:44.942466 INFO::Fitting model to feature number 23, s__Eubacterium_ramulus
+2024-11-18 12:45:44.945167 WARNING::Fitting problem for feature 23 returning NA
+2024-11-18 12:45:44.945885 INFO::Fitting model to feature number 24, s__Eubacterium_rectale
+2024-11-18 12:45:44.948604 WARNING::Fitting problem for feature 24 returning NA
+2024-11-18 12:45:44.949313 INFO::Fitting model to feature number 25, s__Eubacterium_sp_CAG_38
+2024-11-18 12:45:44.952057 WARNING::Fitting problem for feature 25 returning NA
+2024-11-18 12:45:44.95279 INFO::Fitting model to feature number 26, s__Faecalibacterium_prausnitzii
+2024-11-18 12:45:44.955466 WARNING::Fitting problem for feature 26 returning NA
+2024-11-18 12:45:44.956209 INFO::Fitting model to feature number 27, s__Fusicatenibacter_saccharivorans
+2024-11-18 12:45:44.958911 WARNING::Fitting problem for feature 27 returning NA
+2024-11-18 12:45:44.959659 INFO::Fitting model to feature number 28, s__Roseburia_faecis
+2024-11-18 12:45:44.962319 WARNING::Fitting problem for feature 28 returning NA
+2024-11-18 12:45:44.963049 INFO::Fitting model to feature number 29, s__Roseburia_intestinalis
+2024-11-18 12:45:44.965724 WARNING::Fitting problem for feature 29 returning NA
+2024-11-18 12:45:44.966435 INFO::Fitting model to feature number 30, s__Roseburia_inulinivorans
+2024-11-18 12:45:44.969102 WARNING::Fitting problem for feature 30 returning NA
+2024-11-18 12:45:44.969801 INFO::Fitting model to feature number 31, s__Ruminococcus_bicirculans
+2024-11-18 12:45:44.972467 WARNING::Fitting problem for feature 31 returning NA
+2024-11-18 12:45:44.973202 INFO::Fitting model to feature number 32, s__Ruminococcus_lactaris
+2024-11-18 12:45:44.975894 WARNING::Fitting problem for feature 32 returning NA
+2024-11-18 12:45:44.981889 INFO::Counting total values for each feature
+2024-11-18 12:45:44.985881 INFO::Writing filtered data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data.tsv
+2024-11-18 12:45:45.005916 INFO::Writing filtered, normalized data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data_norm.tsv
+2024-11-18 12:45:45.025978 INFO::Writing filtered, normalized, transformed data to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/features/filtered_data_norm_transformed.tsv
+2024-11-18 12:45:45.059142 WARNING::Deleting existing residuals file: output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/residuals.rds
+2024-11-18 12:45:45.060444 INFO::Writing residuals to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/residuals.rds
+2024-11-18 12:45:45.061872 WARNING::Deleting existing fitted file: output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/fitted.rds
+2024-11-18 12:45:45.062927 INFO::Writing fitted values to file output/genetics_vs_microbes_PD/Maaslin2/rs9275326/fits/fitted.rds
+2024-11-18 12:45:45.063756 INFO::Writing all results to file (ordered by increasing q-values): output/genetics_vs_microbes_PD/Maaslin2/rs9275326/all_results.tsv
+2024-11-18 12:45:45.065354 INFO::Writing the significant results (those which are less than or equal to the threshold of 0.050000 ) to file (ordered by increasing q-values): output/genetics_vs_microbes_PD/Maaslin2/rs9275326/significant_results.tsv
