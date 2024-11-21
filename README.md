@@ -13,7 +13,7 @@ The strategy is to:
 The model should look like the following (one per bacterial cluster and per variant)
 
 $$
-cluster \sim Age + scaled(seq.Depth) + PD(1/0) + variant_i + PD\timesvariant_i
+cluster_x \sim Age + scaled(seq.Depth) + PD \times variant_i
 $$
 
 Then we extract the effect of variants on bacterial clusters, and that will be regardless of the disease.
