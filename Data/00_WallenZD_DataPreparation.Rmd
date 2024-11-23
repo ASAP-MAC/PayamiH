@@ -71,11 +71,10 @@ git clone git@github.com:ASAP-MAC/PayamiH.git
 cd PayamiH
 ```
 
-## Work directories and genetic data
+# Work directories and genetic data
 
 1 - Data directories generation. 
 **Maker sure you start from the base Git directory**
-
 
 ```{bash setup data directory, eval=FALSE}
 # TOPMed data
@@ -143,8 +142,7 @@ mkdir -p project_1_MicroGenPD/output/
 
 ```
 
-
-## Download all unique GWAS catalog variants with PD (based on `rsID`)
+# Download all unique GWAS catalog variants with PD (based on `rsID`)
 
 Now we should download the genetic variants that we are interested in, being
 those associated with `PD`. Notice that there are duplicated `rsID`s depending
@@ -212,7 +210,7 @@ for chr in `ls | grep -oE "^(chr[0-9]*|chrX)"`; do bcftools query -s `cat ../sam
 for chr in `ls | grep -oE "^(chr[0-9]*|chrX)"`; do bcftools query -s `cat ../sampleNames/sampleNamesPD_oneLine.txt` -H -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/R2[\t%DS]\n' -r `cat ${chr}_variants_Tabix.txt|tr "\n" "," | sed "s/\,$//g"`  ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/\#//g"| sed "s/\:DS//g" | sed -e "s/\[[0-9]*\]//g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
 ```
 
-## Retrieve PD associated variants in SNCA and HLA genes in Wallen genetic data
+# Retrieve PD associated variants in SNCA and HLA genes in Wallen genetic data
 
 More specifically, we will work with dosages.
 
@@ -275,7 +273,7 @@ cbind(c("Tot" = sum(nVars_by_genes_All), nVars_by_genes_All),
 At this step, we have generated a set of genotypes to test against the microbiome
 as found in the GWAS catalog and our genotypes. It is a `samples x genotypes` matrix.
 
-## WallenZD data preparation into `MultiAssayExperiment`
+# WallenZD data preparation into `MultiAssayExperiment`
 
 ```{r}
 
