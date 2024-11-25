@@ -211,7 +211,16 @@ for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -s $(cat ../s
 
 ```
 
-# Retrieve PD associated variants in SNCA and HLA genes in Wallen genetic data
+Also, for completeness,calculate LD per chromosome only among PD variants 
+and specifically for our dataset.
+
+```{bash, eval=FALSE}
+
+
+
+```
+
+# Keep PD associated variants in SNCA and HLA genes in Wallen genetic data
 
 More specifically, we will work with dosages.
 
@@ -233,7 +242,20 @@ gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_P
   lapply(relocate, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
-  as.data.frame()
+  as.data.frame() %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  )
 
 gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
   sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
@@ -241,7 +263,20 @@ gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog
   lapply(relocate, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
-  as.data.frame()
+  as.data.frame() %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  )
 
 # summary table of variants found in the dataset
 nVars_by_genes_All <- gwasCatalog_variants_dosages_All %>% 

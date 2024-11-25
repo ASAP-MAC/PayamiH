@@ -245,7 +245,11 @@ clusters_vs_dosages.lm.list <- lapply(
 )
 
 # number of tests to correct for as bonferroni: number of cluster + variants tested
-n_tests <- length(clusters_vs_dosages.lm.list) * 2
+n_clusters <- length(clusters_vs_dosages.lm.list)
+indep_vars_HLA <- 2
+indep_vars_SNCA <- 3
+
+n_tests <- length(clusters_vs_dosages.lm.list) * indep_vars_HLA * indep_vars_SNCA
   
 lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, function(x) purrr::reduce(lapply(x, broom::tidy), rbind.data.frame)) %>% 
          bind_rows(.id = "cluster_name") %>% 
@@ -258,9 +262,10 @@ lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, functio
 ```
 
 We correct p-values using the Bonferroni method accounting for 6 clusters tested
-against 2 genes. This way, we are being a bit less stringent than necessary, but 
-this can be fixed later. Significance was set to `Bonferroni p.adj < 0.1`. All
-Cluster-variant associations discussed below are significant.
+against 2 independent variants in the HLA gene locus and 3 variants in the 
+SNCA locus, for a total of `r n_tests` tests. Then, we consider associations between clusters and variants with 
+`Bonferroni p.adj < 0.1` as significant. All Cluster-variant associations 
+discussed below are significant.
 
 ```{r bugs and genetics results table}
 lm_results_corrected_bonferoni.df %>%
@@ -313,11 +318,10 @@ plot_top_assoc <- lm_results_corrected_bonferoni.df %>%
   filter(grepl("chr[0-9]", term), p.value < 0.05) %>% 
   arrange(desc(abs(estimate)))
 
-library(foreach)
-
 ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
   clst <- plot_top_assoc$cluster_name[i]
   varnt <- strsplit(plot_top_assoc$term[i], split = ":", fixed = TRUE) %>% sapply("[", 1)
+  bonfSignif <- plot_top_assoc$p.adj_bonferroni[i] < 0.1
   
   return(ggplot(data_alltogether.df %>% set_names(make.names(colnames(.))),
          aes(
@@ -338,7 +342,8 @@ ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
       x = "Genotype Dosages (rounded)",
       y = "Clust.Score (crude)",
       title = paste(clst, "vs", varnt),
-      color = "Disease status"
+      color = "Disease status",
+      caption = paste("Bonferroni significant:", bonfSignif)
     )
   )
   }), ncol = 2, nrow = 4,
