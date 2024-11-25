@@ -205,9 +205,10 @@ datatable(rsid_to_CHR_POS, caption = "Variants available in the GWAS catalog mad
 # from the PayamiH as base directory, do the following
 cd Data/GWAS_catalog_PD_variants 
 
-for chr in `ls | grep -oE "^(chr[0-9]*|chrX)"`; do bcftools query -s `cat ../sampleNames/sampleNamesPD_oneLine.txt` -H -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/R2[\t%GT]\n' -r `cat ${chr}_variants_Tabix.txt|tr "\n" "," | sed "s/\,$//g"`  ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/\#//g"| sed "s/\:GT//g" | sed -e "s/\[[0-9]*\]//g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -s $(cat ../sampleNames/sampleNamesPD_oneLine.txt) -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%GT]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/# //g" -e "s/:GT//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
 
-for chr in `ls | grep -oE "^(chr[0-9]*|chrX)"`; do bcftools query -s `cat ../sampleNames/sampleNamesPD_oneLine.txt` -H -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/R2[\t%DS]\n' -r `cat ${chr}_variants_Tabix.txt|tr "\n" "," | sed "s/\,$//g"`  ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/\#//g"| sed "s/\:DS//g" | sed -e "s/\[[0-9]*\]//g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -s $(cat ../sampleNames/sampleNamesPD_oneLine.txt) -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%DS]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/# //g" -e "s/:DS//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
+
 ```
 
 # Retrieve PD associated variants in SNCA and HLA genes in Wallen genetic data
@@ -216,7 +217,7 @@ More specifically, we will work with dosages.
 
 Additionally, they must be available in WallenZD.
 
-```{r load variants dosages}
+```{r load variants dosages and hardcalls}
 gwasCatalog_variants_dosages_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
   select(CHROM, POS = CHROM_START, GENE, RSID) %>% 
   # force unique chrom and pos and group Genes and rsid together, this is redundant
