@@ -157,6 +157,7 @@ samples_to_keep.df <- colData(wallenZD_data.mae[["metaphlan_RelAbund.se"]]) %>%
     )
 
 variants_to_keep_rowData.df <- as.data.frame(rowData(wallenZD_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes_dosages.se"]])$GENE),])
+rownames(variants_to_keep_rowData.df) <- variants_to_keep_rowData.df$RSID
 
 per_sample_dosages.df <- t(assay(wallenZD_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
   as.data.frame() %>% 
@@ -166,8 +167,15 @@ per_sample_dosages.df <- t(assay(wallenZD_data.mae, "genotypes_dosages.se"))[,ro
 data_alltogether.df <- inner_join(cluster_sums.df, per_sample_dosages.df, by = "sample_name") %>% 
   inner_join(samples_to_keep.df, by = "sample_name")
 
-datatable(as_tibble(variants_to_keep_rowData.df) %>% 
-            rename(`Imputation Quality (R2)` = R2))
+as_tibble(variants_to_keep_rowData.df) %>% 
+  set_names(
+    gsub("INFO_", "", colnames(.))
+    ) %>%
+  rename(
+    `Empirical (R2)` = ER2,
+    `Imputation Quality (R2)` = R2,
+         ) %>% 
+  datatable()
 ```
 
 Inclusion criteria:
@@ -246,10 +254,10 @@ clusters_vs_dosages.lm.list <- lapply(
 
 # number of tests to correct for as bonferroni: number of cluster + variants tested
 n_clusters <- length(clusters_vs_dosages.lm.list)
-indep_vars_HLA <- 2
+indep_vars_HLA <- 1
 indep_vars_SNCA <- 3
 
-n_tests <- length(clusters_vs_dosages.lm.list) * indep_vars_HLA * indep_vars_SNCA
+n_tests <- length(clusters_vs_dosages.lm.list) * (indep_vars_HLA + indep_vars_SNCA)
   
 lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, function(x) purrr::reduce(lapply(x, broom::tidy), rbind.data.frame)) %>% 
          bind_rows(.id = "cluster_name") %>% 
@@ -262,7 +270,7 @@ lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, functio
 ```
 
 We correct p-values using the Bonferroni method accounting for 6 clusters tested
-against 2 independent variants in the HLA gene locus and 3 variants in the 
+against 1 independent variants in the HLA gene locus and 3 variants in the 
 SNCA locus, for a total of `r n_tests` tests. Then, we consider associations between clusters and variants with 
 `Bonferroni p.adj < 0.1` as significant. All Cluster-variant associations 
 discussed below are significant.
@@ -446,7 +454,7 @@ for (i in names(gsea_on_variantsonly_someSignif)) {
     
     variants_to_keep_rowData.df %>%
       filter(POS == strsplit(i, "_")[[1]][2]) %>%
-      select(CHROM, POS, REF, ALT, RSID, GENE, R2) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
       kbl() %>%
       print()
     
@@ -490,7 +498,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
     
     variants_to_keep_rowData.df %>%
       filter(POS == strsplit(i, "_")[[1]][2]) %>%
-      select(CHROM, POS, REF, ALT, RSID, GENE, R2) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
       kbl() %>%
       print()
     

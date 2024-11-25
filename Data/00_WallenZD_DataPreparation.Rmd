@@ -15,6 +15,7 @@ output:
     use_bookdown: true
     highlight: haddock
 ---
+Latest render: `r format(Sys.time(), "Date: %Y-%b-%d Time: %H:%M:%S")`
 
 ```{r, echo=FALSE}
 knitr::opts_chunk$set(
@@ -242,7 +243,6 @@ gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_P
   lapply(relocate, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
-  as.data.frame() %>% 
   # wrangle INFO column for further info
   separate_rows(INFO, sep = ";") %>%
   separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
@@ -255,7 +255,9 @@ gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_P
   relocate(
     INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
     .after = GENE
-  )
+  ) %>% 
+  # as last step to be able to assign row names 2 chunks later
+  as.data.frame()
 
 gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
   sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
@@ -263,7 +265,6 @@ gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog
   lapply(relocate, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
-  as.data.frame() %>% 
   # wrangle INFO column for further info
   separate_rows(INFO, sep = ";") %>%
   separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
@@ -276,7 +277,8 @@ gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog
   relocate(
     INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
     .after = GENE
-  )
+  ) %>% 
+  as.data.frame()
 
 # summary table of variants found in the dataset
 nVars_by_genes_All <- gwasCatalog_variants_dosages_All %>% 
@@ -445,11 +447,15 @@ save(wallenZD_data.mae, file = "wallenZD_data.mae.RData")
 
 ```
 
+#Final data object generated - a quick look
+
 ```{r}
 wallenZD_data.mae
 ```
 
+# Session Info
+
 ```{r}
-assays(wallenZD_data.mae)
+sessionInfo()
 ```
 
