@@ -1,5 +1,5 @@
 ---
-title: "PD, microbiome and host genetics"
+title: "PD, microbiome and host genetics on SNCA and HLA variants"
 author: "Giacomo Antonello, Zachary D. Wallen, Chad Murchinson, Levi Waldron, Haydeh Payami"
 date: "`r Sys.Date()`"
 output:
@@ -79,26 +79,25 @@ In brief:
   2. Gene annotation was taken from `biomaRt`, but the GWAS catalog had annotations
   too. Naming is based on the HUGO nomenclature.
 
-# Assocation between PD markers and SNCA and HLA gene variants
+# Assocation between PD markers and SNCA and HLA gene variants  (ClustSum)
 
-## Cluster-wide biomarkers score (sum all)
+## Define `ClusterSum`
 
 Haydeh has manually curated a list of bacteria that go together into 6 different
 clusters elevated or decreased in PD. To see the genetic impact of PD associated
 variants on these bacteria without having to pay a high multiple testing price.
 
-As a first simple approach we will sum all relative abundances together. Below 
-is an example of the cluster names and bacteria associated with them.
+Our first approach is to do the following:
+
+  1. Define which species belong to which cluster
+  2. Divide % abundances by 100, to obtain relative abundances again
+  3. Sum relative abundances of all species within each cluster
 
 ```{r}
 biomarkers_medrxiv.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
 
-datatable(biomarkers_medrxiv.df %>% select(-species_metaphlan))
+datatable(biomarkers_medrxiv.df %>% select(-species_metaphlan, `Number of connections`))
 ```
-
-For each sample, we can calculate the sum of all bacteria within each cluster as
-one single value and use these as outcome variables. See below for the calculated
-values.
 
 ```{r}
 
@@ -114,7 +113,7 @@ cluster_sums.df <- left_join(biomarkers_medrxiv.df,
 
 cluster_sums.df %>% 
   mutate_if(is.numeric, round, 3) %>% 
-datatable()
+datatable(caption = "Examples of values obtained with the sum method across clusters. These will be the variables we will use to test association with variant dosages")
 ```
 
 These variables are far from normal, and log transformation does not help.
@@ -132,7 +131,7 @@ cluster_sums.df %>%
     ) %>% 
   mutate(
     Transformation = case_when(
-      Transformation == "value" ~ 'crude',
+      Transformation == "value" ~ 'untransformed',
       Transformation == "log2Transf" ~ 'log2',
       Transformation == "sq.root" ~ 'sq.root',
       TRUE ~ 'error'
@@ -142,8 +141,15 @@ cluster_sums.df %>%
   geom_histogram(fill = "transparent") + 
   facet_wrap(~variable) 
 ```
+## Define variants of interest and number of independent tests
 
-# Genotype dosages x PD microbiome clusters (SNCA and HLA)
+Genetic variants were included if retained if:
+  - they were associated with PD in any GWAS catalog entry
+  - they were found in the Genetic data
+  - they had a gene name associated to them
+  
+The last step is important because it is how I defined that a variant *is* in
+a gene or not
 
 ```{r}
 
@@ -175,21 +181,76 @@ as_tibble(variants_to_keep_rowData.df) %>%
     `Empirical (R2)` = ER2,
     `Imputation Quality (R2)` = R2,
          ) %>% 
-  datatable()
+  datatable(caption = "List of variants found in the GWAS catalog that are explicitly mapped to the SNCA or HLA genes.")
 ```
 
-Inclusion criteria:
-  
-  - Genetic variants were included if retained if:
-    - they were associated with PD in any GWAS catalog entry
-    - they were found in the Genetic data
-    - they had a gene name associated to them
-    The last step is important because it is how I defined that a variant *is* in 
-    a gene or not
-  - Collection method should not be `swab` 
-  - Available data for age, sequencing depth, microbiome PD cumulative scores, genetics
+Some of these variants are in high LD. We want to adjust for the total number of 
+independent tests, therefore we adjust for variants in low LD only across the genes
+of interest. For the sake of reproducibility, we will use a `LDlink` (by NIH) 
+API to prune the variants of interest.
 
-This results in `r nrow(data_alltogether.df)` samples for the analysis, with variant's counts as follows:
+```{r LDlink parameters setup}
+r2_thresh <- 0.1
+maf_thresh <- 0.01
+```
+
+```{r LD pruning}
+
+variants_to_test_LD_matrices_molten <- split.data.frame(variants_to_keep_rowData.df,variants_to_keep_rowData.df$CHROM) %>% 
+  lapply( 
+    function(x)
+    LDlinkR::LDmatrix(
+      snps = x$RSID,
+      pop = "CEU",
+      r2d = "r2",
+      token = "78e50d5fd7e7"
+      ) %>% 
+      column_to_rownames("RS_number") %>% 
+      as.matrix() %>% 
+      reshape2::melt()
+  )
+variants_to_test_LD_matrices_molten_notHighLD <- lapply(variants_to_test_LD_matrices_molten, mutate, 
+                                                        Var2 = case_when(value >= 0.8 ~ NA, 
+                                                                         TRUE ~ Var2))
+
+variants_pruning_step <- split.data.frame(variants_to_keep_rowData.df,variants_to_keep_rowData.df$CHROM) %>% 
+  lapply( 
+    function(x)
+    LDlinkR::SNPclip(
+      r2_threshold = r2_thresh,
+      snps = x$RSID,
+      pop = "CEU",
+      maf_threshold = maf_thresh,
+      token = "78e50d5fd7e7", 
+      genome_build = "grch38"
+      )
+  )
+
+variants_pruning_table <- lapply(
+  variants_pruning_step, mutate, Details = ifelse(grepl("removed", Details), "Removed", "Kept")
+  ) %>% 
+  lapply(group_by, Details) %>%
+  lapply(tally) %>%
+  bind_rows(.id = "Chromosome") %>% 
+  pivot_wider(names_from = "Details", values_from = "n") %>% 
+  mutate(Total = Kept + Removed)
+
+kbl(variants_pruning_table, caption = paste0("Number of idependent variants (Kept) based on LDlink calculations on default parameters (R2 = ", r2_thresh, ", MAF = ", maf_thresh, "). The population chosen is 'CEU'. The sum of 'Kept' values represents the number of independent tests that need to be accounted for later on."))
+```
+
+```{r define number of tests to account for}
+n_indep_variants <- sum(sapply(variants_pruning_step, function(x) sum(grepl("kept", x$Details))))
+```
+
+`NB: Different results between Haydeh (manual) and me (R)`, this will require
+aligning the methods eventually.
+
+## Sample inclusion criteria and statistical modeling
+
+  - Collection method should not be `swab` 
+  - Available data for age, sequencing depth, microbiome PD cumulative scores, genetic data
+
+This results in `r nrow(data_alltogether.df)` samples for the analysis, with variant's distributions as follows:
 
 ```{r}
 cbind(data_alltogether.df %>% 
@@ -223,9 +284,7 @@ cbind(data_alltogether.df %>%
   column_spec(c(4,6,8), border_right = TRUE)
 ```
 
-
-Now perform the model as follows, which allows the interaction term and will 
-spit out coefficients for both variables alone.
+Now perform the model with an interaction term between PD and each variant.
 
 $$
 ClusterSum_i \sim Age + Seq.Depth + PD + Variant_k + PD \times Variant_k
@@ -253,11 +312,8 @@ clusters_vs_dosages.lm.list <- lapply(
 )
 
 # number of tests to correct for as bonferroni: number of cluster + variants tested
-n_clusters <- length(clusters_vs_dosages.lm.list)
-indep_vars_HLA <- 1
-indep_vars_SNCA <- 3
 
-n_tests <- length(clusters_vs_dosages.lm.list) * (indep_vars_HLA + indep_vars_SNCA)
+n_tests <- length(clusters_vs_dosages.lm.list) * n_indep_variants
   
 lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, function(x) purrr::reduce(lapply(x, broom::tidy), rbind.data.frame)) %>% 
          bind_rows(.id = "cluster_name") %>% 
@@ -270,10 +326,10 @@ lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, functio
 ```
 
 We correct p-values using the Bonferroni method accounting for 6 clusters tested
-against 1 independent variants in the HLA gene locus and 3 variants in the 
-SNCA locus, for a total of `r n_tests` tests. Then, we consider associations between clusters and variants with 
-`Bonferroni p.adj < 0.1` as significant. All Cluster-variant associations 
-discussed below are significant.
+against LD-indepentend variants as defined above, for a total of `r n_tests` 
+independent tests. Then, we consider associations between clusters and variants 
+with `p-value < 0.05` as significant further annotating whether each association 
+passed family-wise error rate adjustment.
 
 ```{r bugs and genetics results table}
 lm_results_corrected_bonferoni.df %>%
@@ -284,8 +340,9 @@ lm_results_corrected_bonferoni.df %>%
   reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(term = reactable::colDef(width = 250)))
 ```
 
-Now some plots. For the sake of exploration, we will consider all associations
-with crude `p-value < 0.05` and plot them.
+## Visualization of variant-cluster associations with P-value < 0.05
+
+### Betas bar plots
 
 ```{r}
 data_plot.tmp <- lm_results_corrected_bonferoni.df %>% 
@@ -316,6 +373,9 @@ ggplot() +
   )
 
 ```
+
+
+### Boxplots of ClusterSum vs PD and variants (p-value < 0.05)
 
 Only a few associations are significant here. Below you can find all significant
 ones in boxplots taking into consideration genotypes and PD case/control status.
@@ -357,6 +417,112 @@ ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
   }), ncol = 2, nrow = 4,
   common.legend = TRUE)
 ```
+
+## Odds ratio PD/healthy split by genotype dosage (0, 1, 2)
+
+For each genotype in variant `k`, model as following
+
+$$
+ClusterSum_i \sim Age + Seq.Depth + PD
+$$
+
+And extract the Fold Change of each cluster for PD $FC_i = \frac{PD}{Ctrl}$
+
+```{r}
+lm_grouped_by <- data_alltogether.df %>%
+  pivot_longer(
+    cols = colnames(select(per_sample_dosages.df, -sample_name)), 
+    names_to = "variant", 
+    values_to = "dosage"
+  ) %>%
+  pivot_longer(
+    cols = colnames(select(cluster_sums.df, -sample_name)), 
+    names_to = "clusterName",
+    values_to = "clusterRelAb"
+  ) %>%
+  mutate(dosage = factor(round(dosage, 0))) %>%  # Convert dosage to a factor
+  group_by(clusterName, variant, dosage) %>%  # Group by clusterName, variant, and dosage
+  filter(sum(Case_status == "PD") >= 3 & sum(Case_status == "Control") >= 3) %>%  # Keep only groups with at least 2 observations
+  group_modify(~ {
+    # Apply linear model for each group and tidy the output
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status, data = .x)
+    broom::tidy(lm_results)
+  }) %>% 
+  # adjust p-values by factor
+  mutate(
+    p.adj = ifelse(p.value * n_tests >= 1, 1, p.value * n_tests)
+  )
+```
+
+```{r table split results}
+summary_table <- lm_grouped_by %>%
+  filter(term == "Case_statusPD", p.value < 0.05) %>%
+  
+  mutate(
+    estimate_ci = sprintf("%.3f (%.3f, %.3f)", 
+                          estimate, 
+                          estimate - 1.96 * std.error, 
+                          estimate + 1.96 * std.error),
+    p_adj = sprintf("%.3e",p.adj)
+  ) %>%
+  select(clusterName, variant, dosage, estimate_ci, p_adj) %>%
+  pivot_wider(
+    names_from = dosage, 
+    values_from = c(estimate_ci, p_adj),
+    names_glue = "{.value}_{dosage}"
+  ) %>%
+  arrange(clusterName, variant) %>% 
+  .[,c(1,2,3,6,4,7,5,8)] %>% 
+  ungroup() %>% 
+  mutate(
+    p_adj_0 = ifelse(as.numeric(p_adj_0) < 0.1, paste(p_adj_0, "*"), p_adj_0),
+    p_adj_1 = ifelse(as.numeric(p_adj_1) < 0.1, paste(p_adj_1, "*"), p_adj_1),
+    p_adj_2 = ifelse(as.numeric(p_adj_2) < 0.1, paste(p_adj_2, "*"), p_adj_2)
+  )
+
+highlight_rows <- which(
+  as.numeric(gsub(" *", "", summary_table$p_adj_0, fixed = TRUE)) < 0.1 | 
+    as.numeric(gsub(" *", "", summary_table$p_adj_1, fixed = TRUE)) < 0.1 |
+    as.numeric(gsub(" *", "", summary_table$p_adj_2, fixed = TRUE)) < 0.1
+  )
+
+
+summary_table %>% 
+  as.matrix() %>% 
+  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta", "P.adj"), 3))) %>%
+  kable("html", caption = "Overview of clusters' associations with PD separated by each variant's ID. Only variants with at least 1 association were kept in the visualization. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the p.adj column.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
+  add_header_above(c(" " = 2, "Dosage 0" = 2, "Dosage 1" = 2, "Dosage 2" = 2)) %>%
+  column_spec(1:2, bold = T) %>%
+  collapse_rows(columns = 1, valign = "top") %>% 
+  row_spec(highlight_rows, bold = TRUE, color = "black")
+```
+
+```{r}
+plot_data <- lm_grouped_by %>%
+  filter(term == "Case_statusPD", p.value < 0.05) %>%
+  mutate(variant = factor(variant, levels = sort(unique(variant))))
+
+ggplot(plot_data, aes(x = variant, y = estimate, fill = dosage)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  # geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error),
+  #               position = position_dodge(width = 0.8), width = 0.25) +
+  facet_grid(cols = vars(clusterName), rows = vars(variant), scales = "free_y") +
+  coord_flip() +
+  labs(x = "Variant", y = "Estimate", fill = "Dosage") +
+  theme(
+    axis.text.y = element_blank(),
+    strip.text.y = element_text(angle = 0, vjust = 0.5, hjust = 0, color = "black"),
+    strip.background.y = element_rect(fill = "white", size = 8),
+    legend.position = "bottom") +
+  scale_fill_brewer(palette = "Set2")
+
+
+lm_grouped_by %>% 
+  filter(term == "Case_statusPD") %>% 
+  select(-term)
+```
+
 
 # Approach 2: Microbiome wide regression with another method, followed by GSEA (WIP)
 

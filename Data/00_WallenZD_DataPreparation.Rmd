@@ -212,15 +212,6 @@ for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -s $(cat ../s
 
 ```
 
-Also, for completeness,calculate LD per chromosome only among PD variants 
-and specifically for our dataset.
-
-```{bash, eval=FALSE}
-
-
-
-```
-
 # Keep PD associated variants in SNCA and HLA genes in Wallen genetic data
 
 More specifically, we will work with dosages.
