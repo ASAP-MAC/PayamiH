@@ -141,15 +141,14 @@ cluster_sums.df %>%
   geom_histogram(fill = "transparent") + 
   facet_wrap(~variable) 
 ```
+
 ## Define variants of interest and number of independent tests
 
 Genetic variants were included if retained if:
   - they were associated with PD in any GWAS catalog entry
   - they were found in the Genetic data
-  - they had a gene name associated to them
-  
-The last step is important because it is how I defined that a variant *is* in
-a gene or not
+  - they had a gene name associated to them (for easy lookup)
+
 
 ```{r}
 

@@ -55,7 +55,9 @@ load("../Data/wallenZD_data.mae.RData")
 rm(BioC_required_packages,CRAN_required_packages)
 gc(verbose = FALSE)
 
-sapply(list.files("~/bin/biobakeryUtils/", full.names = TRUE), source)
+for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
+  source(f)
+}
 ```
 
 # Directory and data preparation
@@ -145,31 +147,49 @@ mkdir -p project_1_MicroGenPD/output/
 
 # Download all unique GWAS catalog variants with PD (based on `rsID`)
 
-Now we should download the genetic variants that we are interested in, being
-those associated with `PD`. Notice that there are duplicated `rsID`s depending
-on how many times they have been entried, hence reported. We are interested in 
-having them only once.
+Now we should download the genetic variants that we are interested in. This is the
+following method used to retrieve these variants.
 
+  1. search associations using the disease ID `MONDO_0005180`
+  
+  2. join all useful data together (from step 1)
+  
+  3. filter for variants with $Pvalue < 5 \times 10^{-8}$ (more than half of these
+  do not reach that threshold)
+  
+  4. Harmonize all variants with `chromosome`, `position`, `risk allele`, ...
+  
 ```{r, eval=!interactive()}
 # retrieve associations with GWAS catalog traits
 parkinson_gwasCatalog.gwasrapidd <- gwasrapidd::get_associations(efo_id = "MONDO_0005180")
 
-parkinson_variants_gwas_catalog.df <- full_join(
+tmp <- list(
   select(parkinson_gwasCatalog.gwasrapidd@associations, 
-         association_id, or_per_copy_number, beta_unit),
+         association_id, or_per_copy_number, beta_unit, pvalue),
   select(parkinson_gwasCatalog.gwasrapidd@risk_alleles, 
-         association_id, variant_id, risk_allele), 
-  by = "association_id") %>% 
+         association_id, variant_id, risk_allele),
+  select(parkinson_gwasCatalog.gwasrapidd@genes, 
+         association_id, gene_name)) %>% 
+  reduce(full_join, by = "association_id") %>% 
   # remove duplicated lines, preferring those where a rik allele has been reported
   arrange(risk_allele) %>%       
-  distinct(variant_id, .keep_all = TRUE)
+  distinct(variant_id, .keep_all = TRUE) %>% 
+  # keep only variants that passed nominal Genome-wide significance
+  filter(pvalue < 5e-8)
 
-ensembl <- biomaRt::useEnsembl(biomart = "snps", dataset = "hsapiens_snp")
+tryCatch(
+  load("GWAS_catalog_PD_variants/ensembl.RData"),
+  error = function(){
+    ensembl <- biomaRt::useEnsembl(biomart = "snps", dataset = "hsapiens_snp")
+    save(ensembl, file = "GWAS_catalog_PD_variants/ensembl.RData")
+  }
+    )
+
 
 rsid_to_CHR_POS <- biomaRt::getBM(
-  attributes = c("refsnp_id", "chr_name", "chrom_start", "chrom_end", "allele", "associated_gene"), 
+  attributes = c("refsnp_id", "chr_name", "chrom_start", "chrom_end"), 
       filters = "snp_filter", 
-      values = parkinson_variants_gwas_catalog.df$variant_id, 
+      values = tmp$variant_id, 
       mart = ensembl) %>% 
   rename(
     variant_id = refsnp_id
@@ -185,21 +205,40 @@ rsid_to_CHR_POS <- biomaRt::getBM(
     CHROM = chr_name, 
     CHROM_START = chrom_start, 
     CHROM_END = chrom_end, 
-    ALLELE = allele, 
-    RSID = variant_id,
-    GENE = associated_gene
+    variant_id
     ) %>% 
   # same trick, to be sure we have only variants with gene names associated, wherever possible
   arrange(rowSums(is.na(.))) %>%       
-  distinct(RSID, .keep_all = TRUE)
+  distinct(variant_id, .keep_all = TRUE)
 
-write_tsv(rsid_to_CHR_POS, file = "GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv")
+parkinson_variants_gwas_catalog.df <- full_join(tmp, rsid_to_CHR_POS, by = "variant_id") %>% 
+  select(
+    CHROM, CHROM_START, CHROM_END, RSID = variant_id, GENE = gene_name, PD_RISK_ALLELE = risk_allele
+  ) %>%
+  arrange(CHROM, CHROM_START)
 
-for(chr in unique(rsid_to_CHR_POS$CHROM)){
-  writeLines(text = paste0(filter(rsid_to_CHR_POS, CHROM == chr)$CHROM, ":", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_START,"-", filter(rsid_to_CHR_POS, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt"))
+parkinson_variants_gwas_catalog.df$CHROM[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "chr6"
+parkinson_variants_gwas_catalog.df$CHROM_START[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$CHROM_END[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$RSID[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "rsUnassigned"
+
+datatable(parkinson_variants_gwas_catalog.df, caption = "Unique variants available in the GWAS catalog with P-value , 5E-8. Variants without chromosome and position available will be discarded. Variant with RSID 'rsUnassigned' comes from the original value '6:32588205', which was manually curated to be included into the analysis. Gene annotations were taken 'as is' from the GWAS catalog, to limit variability. Notice that the biomaRt annotation was returning different annotations for < 10% variants.")
+
+```
+
+Unfortunately, despite imputation and manual curation, variant `6:32588205` was
+not found in our imputed genotype datasets.
+
+```{r, eval=!interactive()}
+library(magrittr)
+parkinson_variants_gwas_catalog.df %<>% filter(!is.na(CHROM), !is.na(CHROM_START))
+
+write_tsv(parkinson_variants_gwas_catalog.df, file = "GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv")
+
+for(chr in unique(parkinson_variants_gwas_catalog.df$CHROM)){
+  writeLines(text = paste0(filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM, ":", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_START,"-", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt"))
 }
 
-datatable(rsid_to_CHR_POS, caption = "Variants available in the GWAS catalog made unique based on the rsID. Additionally, Gene annotations were given preference over no annotation. Hence, they should be treated with caution. All annotations were done using the ensembl annotation resources in `biomaRt`.")
 ```
 
 ```{bash, eval=FALSE}
@@ -220,18 +259,15 @@ Additionally, they must be available in WallenZD.
 
 ```{r load variants dosages and hardcalls}
 gwasCatalog_variants_dosages_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
-  select(CHROM, POS = CHROM_START, GENE, RSID) %>% 
-  # force unique chrom and pos and group Genes and rsid together, this is redundant
-  group_by(CHROM, POS) %>% 
-  reframe(
-    GENE = paste(GENE, collapse = ";"),
-    RSID = paste(RSID, collapse = ";")
-  ) %>% as.data.frame()
+  rename(POS = CHROM_START,
+         PD.RISK.ALLELE = PD_RISK_ALLELE) %>% 
+  select(-CHROM_END) %>% 
+  as.data.frame()
 
 gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Dosages.txt", full.names = T) %>% 
   sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
   lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
-  lapply(relocate, RSID, GENE, .after = ALT) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
   # wrangle INFO column for further info
@@ -253,7 +289,7 @@ gwasCatalog_variants_dosages_in_WallenZD.df <- list.files(path = "GWAS_catalog_P
 gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
   sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
   lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
-  lapply(relocate, RSID, GENE, .after = ALT) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
   lapply(function(x) set_names(x, str_remove(colnames(x), "_.*"))) %>% 
   purrr::reduce(rbind) %>% 
   # wrangle INFO column for further info
@@ -269,6 +305,7 @@ gwasCatalog_variants_hardcalls_in_WallenZD.df <- list.files(path = "GWAS_catalog
     INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
     .after = GENE
   ) %>% 
+  # as last step to be able to assign row names 2 chunks later
   as.data.frame()
 
 # summary table of variants found in the dataset
