@@ -408,7 +408,7 @@ ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
     scale_color_manual(values = c("skyblue3", "gold3")) +
     labs(
       x = "Genotype Dosages (rounded)",
-      y = "Clust.Score (crude)",
+      y = "ClusterSum (crude)",
       title = paste(clst, "vs", varnt),
       color = "Disease status",
       caption = paste("Bonferroni significant:", bonfSignif)
@@ -418,9 +418,11 @@ ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
   common.legend = TRUE)
 ```
 
-## Odds ratio PD/healthy split by genotype dosage (0, 1, 2)
+## Fold Change PD/healthy split by genotype dosage (0, 1, 2)
 
-For each genotype in variant `k`, model as following
+Now we want to ask what is the fold change of a cluster (e.g. Fiber degraders)
+between PD and Controls having the same genotype. We would expect some fold changes
+to increase at increasing genotype, while adjusting for age and sequencing depth.
 
 $$
 ClusterSum_i \sim Age + Seq.Depth + PD
@@ -429,7 +431,7 @@ $$
 And extract the Fold Change of each cluster for PD $FC_i = \frac{PD}{Ctrl}$
 
 ```{r}
-lm_grouped_by <- data_alltogether.df %>%
+lm_split_by_variant_and_dosage <- data_alltogether.df %>%
   pivot_longer(
     cols = colnames(select(per_sample_dosages.df, -sample_name)), 
     names_to = "variant", 
@@ -442,22 +444,25 @@ lm_grouped_by <- data_alltogether.df %>%
   ) %>%
   mutate(dosage = factor(round(dosage, 0))) %>%  # Convert dosage to a factor
   group_by(clusterName, variant, dosage) %>%  # Group by clusterName, variant, and dosage
-  filter(sum(Case_status == "PD") >= 3 & sum(Case_status == "Control") >= 3) %>%  # Keep only groups with at least 2 observations
+  filter(sum(Case_status == "PD") >= 5 & sum(Case_status == "Control") >= 5) %>%  # Keep only groups with at least 2 observations
   group_modify(~ {
     # Apply linear model for each group and tidy the output
     lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status, data = .x)
     broom::tidy(lm_results)
   }) %>% 
+  ungroup() %>% 
   # adjust p-values by factor
   mutate(
     p.adj = ifelse(p.value * n_tests >= 1, 1, p.value * n_tests)
-  )
+  ) 
 ```
 
 ```{r table split results}
-summary_table <- lm_grouped_by %>%
-  filter(term == "Case_statusPD", p.value < 0.05) %>%
+signif_assocs <- lm_split_by_variant_and_dosage %>%
+  filter(term == "Case_statusPD", p.adj < 0.1)
   
+summary_table <- lm_split_by_variant_and_dosage %>% 
+  filter(term == "Case_statusPD") %>% 
   mutate(
     estimate_ci = sprintf("%.3f (%.3f, %.3f)", 
                           estimate, 
@@ -465,7 +470,7 @@ summary_table <- lm_grouped_by %>%
                           estimate + 1.96 * std.error),
     p_adj = sprintf("%.3e",p.adj)
   ) %>%
-  select(clusterName, variant, dosage, estimate_ci, p_adj) %>%
+  select(clusterName, variant, dosage, estimate_ci, p_adj) %>% 
   pivot_wider(
     names_from = dosage, 
     values_from = c(estimate_ci, p_adj),
@@ -474,6 +479,7 @@ summary_table <- lm_grouped_by %>%
   arrange(clusterName, variant) %>% 
   .[,c(1,2,3,6,4,7,5,8)] %>% 
   ungroup() %>% 
+  filter(as.numeric(p_adj_0) < 0.1 | as.numeric(p_adj_1) < 0.1 | as.numeric(p_adj_2) < 0.1) %>% 
   mutate(
     p_adj_0 = ifelse(as.numeric(p_adj_0) < 0.1, paste(p_adj_0, "*"), p_adj_0),
     p_adj_1 = ifelse(as.numeric(p_adj_1) < 0.1, paste(p_adj_1, "*"), p_adj_1),
@@ -489,38 +495,36 @@ highlight_rows <- which(
 
 summary_table %>% 
   as.matrix() %>% 
-  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta", "P.adj"), 3))) %>%
-  kable("html", caption = "Overview of clusters' associations with PD separated by each variant's ID. Only variants with at least 1 association were kept in the visualization. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the p.adj column.") %>%
+  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta (95% C.I.)", "P.adj"), 3))) %>%
+  
+  kable("html", caption = "Overview of clusters' associations with PD compared to Controls split by each variant's dosage. Only variants with at least 1 significant association in any of the 3 dosages were kept in the table. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the p.adj column. 'Beta' values indicate the association between sex. The analysis was restricted to variants with at least 5 individuals with PD and 5 Controls in each dosage. NAs are cases where dosages did not have enough cases and controls to model.") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
   add_header_above(c(" " = 2, "Dosage 0" = 2, "Dosage 1" = 2, "Dosage 2" = 2)) %>%
-  column_spec(1:2, bold = T) %>%
-  collapse_rows(columns = 1, valign = "top") %>% 
-  row_spec(highlight_rows, bold = TRUE, color = "black")
+  collapse_rows(columns = 1, valign = "top")
 ```
 
 ```{r}
-plot_data <- lm_grouped_by %>%
-  filter(term == "Case_statusPD", p.value < 0.05) %>%
-  mutate(variant = factor(variant, levels = sort(unique(variant))))
-
-ggplot(plot_data, aes(x = variant, y = estimate, fill = dosage)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  # geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error),
-  #               position = position_dodge(width = 0.8), width = 0.25) +
-  facet_grid(cols = vars(clusterName), rows = vars(variant), scales = "free_y") +
-  coord_flip() +
-  labs(x = "Variant", y = "Estimate", fill = "Dosage") +
-  theme(
-    axis.text.y = element_blank(),
-    strip.text.y = element_text(angle = 0, vjust = 0.5, hjust = 0, color = "black"),
-    strip.background.y = element_rect(fill = "white", size = 8),
-    legend.position = "bottom") +
-  scale_fill_brewer(palette = "Set2")
-
-
-lm_grouped_by %>% 
+lm_split_by_variant_and_dosage %>% 
   filter(term == "Case_statusPD") %>% 
-  select(-term)
+  complete(clusterName, variant, dosage, fill = list(estimate = 0)) %>% 
+  ggplot(aes(x = variant, y = estimate, fill = dosage)) + 
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  facet_wrap(~clusterName)+
+  scale_fill_brewer() +
+  geom_text(
+    data = lm_split_by_variant_and_dosage %>%
+      filter(term == "Case_statusPD", p.adj < 0.1) %>%
+      complete(clusterName, variant, dosage, fill = list(estimate = 0)) %>%
+      mutate(yposit = sign(estimate)*(abs(estimate) + 0.01)), 
+    mapping = aes(x = variant, y = yposit, label = ifelse(p.adj < 0.1, "*", ""), group = dosage), 
+            position = position_dodge(width = 1), size = 4) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "top") +
+  labs(
+    x = "Variant",
+    y = expression(Eff.~Size~(beta)),
+    fill = "Dosage"
+  )
+
 ```
 
 
@@ -679,16 +683,6 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
     cat("\n")
 }
 ```
-
-```{r, eval=FALSE}
-library(edgeR)
-data_filt <- wallenZD_data.mae[["metaphlan_Counts.se"]][,colData(wallenZD_data.mae[["metaphlan_Counts.se"]])$collection_method != "swab"]
-metadata.df <- colData(wallenZD_data.mae[["metaphlan_Counts.se"]]) %>% as.data.frame()
-counts.mtx <- assay(wallenZD_data.mae, "metaphlan_Counts.se") %>% as.matrix()
-
-glmFit.SummarizedExperiment(wallenZD_data.mae[["metaphlan_Counts.se"]], design = model.matrix())
-```
-
 
 # Open Questions
 
