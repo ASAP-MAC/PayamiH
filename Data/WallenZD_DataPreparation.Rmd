@@ -1,0 +1,488 @@
+---
+title: "WallenZD_2022 data preparation"
+author: "Giacomo Antonello, Zachary D. Wallen, Chad Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: show
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+Latest render: `r format(Sys.time(), "Date: %Y-%b-%d Time: %H:%M:%S")`
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+```
+
+```{r, include=FALSE}
+# Check and install necessary CRAN packages
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
+
+install.packages(
+  CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
+)
+
+# Check and install necessary Bioconductor packages
+BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
+
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
+
+
+# load basic data manipulation packages
+library(phyloseq)
+library(DT)
+library(kableExtra)
+library(MultiAssayExperiment)
+library(tidyverse)
+
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+
+for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
+  source(f)
+}
+```
+
+# Directory and data preparation
+
+First thing is clone the repository I made for the Payami Lab and add make sure 
+that the `.gitignore` file has exceptions for unwanted data sharing into the 
+repository. `NB: This has to be done manually`
+
+```{bash, eval=FALSE}
+cd ~
+
+git clone git@github.com:ASAP-MAC/PayamiH.git
+
+cd PayamiH
+```
+
+# Work directories and genetic data
+
+1 - Download microbiome data from Zenodo 
+
+**Maker sure you start from the base Git directory**
+
+```{bash setup data directory, eval=FALSE}
+# TOPMed data
+mkdir -p Data/TOPMed_imputed_genotypes
+cp -r /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/* Data/TOPMed_imputed_genotypes
+
+wget https://zenodo.org/records/7246185/files/Source_Data_24Oct2022.xlsx -O wallen2022_input.xlsx
+
+```
+
+2 - bcftools setup
+
+There are several options. The one proposed below is one of the most universal,
+meaning many can set it up.
+
+```{bash setup micromamba, eval=FALSE}
+cd ~
+
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj micromamba/bin
+./bin/micromamba shell init -s bash -r ~/micromamba
+
+micromamba config append channels bioconda
+
+micromamba create -n geneticTools -c bioconda
+
+micromamba activate geneticTools
+
+micromamba install bcftools
+
+```
+
+3 - Indexing of VCF file for fast querying (necessary for bcftools)
+
+```{bash tabix vcf files, eval=FALSE}
+cd ~/PayamiH/Data/TOPMed_imputed_genotypes/
+
+for chr in `ls *.dose.vcf.gz`; do sbatch -c1 --mem 8G -pexpress --wrap "bcftools index -c ${chr}"; done
+```
+
+4 - Extract samples list to query with `bcftools query`, this is done considering the following:
+
+  1. The only samples needed for the analysis are those beginning with `D`
+  2. Keep only samples from point 1 that present across all VCF files. This is 
+  redundant but done anyway.
+
+The last step is important for bcftools to work properly in querying samples. 
+
+# Project setup, PD genetics and gut microbiome
+
+```{bash, eval=FALSE}
+cd ~/PayamiH
+
+mkdir -p project_1_MicroGenPD/output/
+
+```
+
+# Download all unique GWAS catalog variants with PD (based on `rsID`)
+
+Now we should download the genetic variants that we are interested in. This is the
+following method used to retrieve these variants.
+
+  1. search associations using the disease ID `MONDO_0005180`
+  
+  2. join all useful data together (from step 1)
+  
+  3. filter for variants with $Pvalue < 5 \times 10^{-8}$ (more than half of these
+  do not reach that threshold)
+  
+  4. Harmonize all variants with `chromosome`, `position`, `risk allele`, ...
+  
+```{r, eval=!interactive()}
+# retrieve associations with GWAS catalog traits
+parkinson_gwasCatalog.gwasrapidd <- gwasrapidd::get_associations(efo_id = "MONDO_0005180")
+
+tmp <- list(
+  select(parkinson_gwasCatalog.gwasrapidd@associations, 
+         association_id, or_per_copy_number, beta_unit, pvalue),
+  select(parkinson_gwasCatalog.gwasrapidd@risk_alleles, 
+         association_id, variant_id, risk_allele),
+  select(parkinson_gwasCatalog.gwasrapidd@genes, 
+         association_id, gene_name)) %>% 
+  reduce(full_join, by = "association_id") %>% 
+  # remove duplicated lines, preferring those where a rik allele has been reported
+  arrange(risk_allele) %>%       
+  distinct(variant_id, .keep_all = TRUE) %>% 
+  # keep only variants that passed nominal Genome-wide significance
+  filter(pvalue < 5e-8)
+
+tryCatch(
+  load("GWAS_catalog_PD_variants/ensembl.RData"),
+  error = function(){
+    ensembl <- biomaRt::useEnsembl(biomart = "snps", dataset = "hsapiens_snp")
+    save(ensembl, file = "GWAS_catalog_PD_variants/ensembl.RData")
+  }
+    )
+
+
+rsid_to_CHR_POS <- biomaRt::getBM(
+  attributes = c("refsnp_id", "chr_name", "chrom_start", "chrom_end"), 
+      filters = "snp_filter", 
+      values = tmp$variant_id, 
+      mart = ensembl) %>% 
+  rename(
+    variant_id = refsnp_id
+  ) %>%
+  #keep only well defined chromosome scaffolds, including sex chromosome
+  filter(
+    !startsWith(chr_name, "H")
+  ) %>% 
+  mutate(
+    chr_name = factor(paste0("chr", chr_name), levels = as.character(paste0("chr", c(1:22, "X", "Y"))))
+  ) %>% 
+  select(
+    CHROM = chr_name, 
+    CHROM_START = chrom_start, 
+    CHROM_END = chrom_end, 
+    variant_id
+    ) %>% 
+  # same trick, to be sure we have only variants with gene names associated, wherever possible
+  arrange(rowSums(is.na(.))) %>%       
+  distinct(variant_id, .keep_all = TRUE)
+
+parkinson_variants_gwas_catalog.df <- full_join(tmp, rsid_to_CHR_POS, by = "variant_id") %>% 
+  select(
+    CHROM, CHROM_START, CHROM_END, RSID = variant_id, GENE = gene_name, PD_RISK_ALLELE = risk_allele
+  ) %>%
+  arrange(CHROM, CHROM_START)
+
+parkinson_variants_gwas_catalog.df$CHROM[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "chr6"
+parkinson_variants_gwas_catalog.df$CHROM_START[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$CHROM_END[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$RSID[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "rsUnassigned"
+
+datatable(parkinson_variants_gwas_catalog.df, caption = "Unique variants available in the GWAS catalog with P-value , 5E-8. Variants without chromosome and position available will be discarded. Variant with RSID 'rsUnassigned' comes from the original value '6:32588205', which was manually curated to be included into the analysis. Gene annotations were taken 'as is' from the GWAS catalog, to limit variability. Notice that the biomaRt annotation was returning different annotations for < 10% variants.")
+
+```
+
+Unfortunately, despite imputation and manual curation, variant `6:32588205` was
+not found in our imputed genotype datasets.
+
+```{r, eval=!interactive()}
+library(magrittr)
+parkinson_variants_gwas_catalog.df %<>% filter(!is.na(CHROM), !is.na(CHROM_START))
+
+write_tsv(parkinson_variants_gwas_catalog.df, file = "GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv")
+
+for(chr in unique(parkinson_variants_gwas_catalog.df$CHROM)){
+  writeLines(text = paste0(filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM, ":", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_START,"-", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt"))
+}
+
+```
+
+```{bash, eval=FALSE}
+# from the PayamiH as base directory, do the following
+cd Data/GWAS_catalog_PD_variants 
+
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%GT]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:GT//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
+
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%DS]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") ../TOPMed_imputed_genotypes/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:DS//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
+
+```
+
+# Data wrapping into `MultiAssayExperiment`
+
+## Prepare microbiome-related data
+
+```{r}
+
+# 1 - metaphlan relative abundances and estimated counts
+WallenZD_2022_metaphlan_relab <- readxl::read_xlsx("wallen2022_input.xlsx", sheet = "metaphlan_rel_ab")
+WallenZD_2022_metaphlan_counts <- readxl::read_xlsx("wallen2022_input.xlsx", sheet = "metaphlan_counts")
+# 1.1 - clean metaphlan tables
+WallenZD_2022_metaphlan_relab_wrangled <- wrangle_metaphlan(WallenZD_2022_metaphlan_relab, "Species")
+WallenZD_2022_metaphlan_counts_wrangled <- wrangle_metaphlan(WallenZD_2022_metaphlan_counts, "Species")
+WallenZD_2022_metaphlan_counts_wrangled$profiles <- round(WallenZD_2022_metaphlan_counts_wrangled$profiles, 0)
+
+# 2 - HUMaNN profiles
+# 2.1 KO tables
+WallenZD_2022_humann_KO <- readxl::read_xlsx("wallen2022_input.xlsx", sheet = "humann_KO_group_counts") %>% 
+  wrangle_humann(input_type = "ko")
+WallenZD_2022_humann_KO$profiles <- round(WallenZD_2022_humann_KO$profiles, 0)
+WallenZD_2022_humann_pathways <- readxl::read_xlsx("wallen2022_input.xlsx", sheet = "humann_pathway_counts") %>% wrangle_humann(input_type = "pathways")
+
+# 2.2 - Pathways
+WallenZD_2022_humann_pathways$profiles <- round(WallenZD_2022_humann_pathways$profiles, 0)
+
+# 3 - sample-participant metadata
+WallenZD_2022_metadata <- readxl::read_xlsx("wallen2022_input.xlsx", sheet = "subject_metadata") %>% 
+  as.data.frame()
+rownames(WallenZD_2022_metadata) <- WallenZD_2022_metadata$sample_name
+
+# reorder colnames so they all match the metadata
+samples_intersect <- purrr::reduce(list(WallenZD_2022_metaphlan_relab_wrangled$profiles,
+WallenZD_2022_metaphlan_counts_wrangled$profiles,
+WallenZD_2022_humann_KO$profiles,
+WallenZD_2022_humann_pathways$profiles) %>% lapply(colnames), intersect) 
+
+WallenZD_2022_metaphlan_relab_wrangled$profiles <- WallenZD_2022_metaphlan_relab_wrangled$profiles[, samples_intersect]
+WallenZD_2022_metaphlan_counts_wrangled$profiles <- WallenZD_2022_metaphlan_counts_wrangled$profiles[, samples_intersect]
+WallenZD_2022_humann_KO$profiles <- WallenZD_2022_humann_KO$profiles[, samples_intersect]
+WallenZD_2022_humann_pathways$profiles <- WallenZD_2022_humann_pathways$profiles[, samples_intersect]
+
+sample_metadata.df <- WallenZD_2022_metadata[samples_intersect,] %>% 
+  mutate(seqs_scaled = scale(total_sequences))
+
+```
+
+## Prepare genotype data
+
+Both dosages and hardcalls.
+
+```{r load variants dosages and hardcalls}
+gwasCatalog_variants_dosages_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
+  rename(POS = CHROM_START,
+         PD.RISK.ALLELE = PD_RISK_ALLELE) %>% 
+  select(-CHROM_END) %>% 
+  as.data.frame()
+
+gwasCatalog_variants_dosages_in_TOPMed.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Dosages.txt", full.names = T) %>% 
+  sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>%
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
+  purrr::reduce(rbind) %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  ) %>% 
+  # as last step to be able to assign row names 2 chunks later
+  as.data.frame()
+
+
+gwasCatalog_variants_hardcalls_in_TOPMed.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
+  sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
+  purrr::reduce(rbind) %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  ) %>% 
+  # as last step to be able to assign row names 2 chunks later
+  as.data.frame()
+
+# summary table of variants found in the dataset
+nVars_by_genes_All <- gwasCatalog_variants_dosages_All %>% 
+  mutate(
+    `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
+    `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
+    OTHER = !grepl("SNCA|HLA|GBA|LRRK2", GENE)) %>% 
+  .[,(ncol(.)-2):ncol(.)] %>% 
+  colSums()
+
+nVars_by_genes_TOPMed <- gwasCatalog_variants_dosages_in_TOPMed.df %>% 
+  mutate(
+    `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
+    `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
+    OTHER = !grepl("SNCA|HLA|GBA|LRRK2", GENE)) %>% 
+  .[,(ncol(.)-2):ncol(.)] %>% 
+  colSums()
+
+cbind(c("Tot" = sum(nVars_by_genes_All), nVars_by_genes_All), 
+      c("Tot" = sum(nVars_by_genes_TOPMed), nVars_by_genes_TOPMed)) %>% 
+  
+  magrittr::set_colnames(c("GWAS Catalog", "TOPMed imputed PayamiLab samples")) %>% 
+  kableExtra::kbl(caption = "Comparison of genetic variants associated with PD found in the GWAS catalog and in TOPMed imputed genotypes") %>% 
+  kableExtra::kable_styling() %>% 
+  kableExtra::add_header_above(c(" " = 1, "N. unique variants associated with PD" = 2))
+
+```
+
+The sample names in the TOPMed data are duplicated with the 
+`sample1234_sample1234`, while microbiome data sets have only `sample1234`.
+
+```{r}
+
+variant_metadata_cols <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[1:max(which(grepl("INFO", colnames(gwasCatalog_variants_dosages_in_TOPMed.df))))]
+sampleIDs <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[grepl(paste(paste0("^", rownames(sample_metadata.df), collapse = "|")), colnames(gwasCatalog_variants_dosages_in_TOPMed.df))]
+
+newColnames <- c(variant_metadata_cols, sampleIDs)
+names(newColnames) <- c(variant_metadata_cols, sampleIDs %>% strsplit("_") %>% sapply("[", 1))
+
+gwasCatalog_variants_hardcalls_in_TOPMed.df <- select(gwasCatalog_variants_hardcalls_in_TOPMed.df, all_of(newColnames))
+gwasCatalog_variants_dosages_in_TOPMed.df <- select(gwasCatalog_variants_dosages_in_TOPMed.df, all_of(newColnames))
+
+```
+
+At this step, we have generated a set of genotypes to test against the microbiome
+as found in the GWAS catalog and our genotypes. It is a `samples x genotypes` matrix.
+
+## Generate a `MultiAssayExperiment` object
+
+```{r}
+# manipulate genetics data a bit, to make it more usable in the SummarizedExperiment
+# context
+
+tmp <- gwasCatalog_variants_dosages_in_TOPMed.df
+samples_intersect <- intersect(colnames(tmp), rownames(sample_metadata.df))
+variants_made_unique <- make.unique(tmp$RSID)
+rownames(tmp) <- variants_made_unique
+
+genetics_matrix_dosages <- as.matrix(tmp[variants_made_unique, samples_intersect])
+
+tmp <- gwasCatalog_variants_hardcalls_in_TOPMed.df
+samples_intersect <- intersect(colnames(tmp), rownames(sample_metadata.df))
+variants_made_unique <- make.unique(tmp$RSID)
+rownames(tmp) <- variants_made_unique
+
+genetics_matrix_hardcalls <- as.matrix(tmp[variants_made_unique, samples_intersect])
+
+
+genetics_metadata <- tmp[variants_made_unique, variant_metadata_cols]
+sample_metadata_genetics <- sample_metadata.df[samples_intersect,]
+
+library(MultiAssayExperiment, quietly = TRUE, verbose = FALSE)
+
+summarizedExperiments.list <- list(
+  genotypes_dosages.se = SummarizedExperiment(
+    assays = list("genotypes_dosages" = genetics_matrix_dosages, "genotypes_hardcalls" = genetics_matrix_hardcalls),
+    rowData = genetics_metadata,
+  colData = sample_metadata_genetics
+  ),
+  
+  genotypes_hardcalls.se = SummarizedExperiment(
+    assays = list("genotypes_hardcalls" = genetics_matrix_hardcalls),
+    rowData = genetics_metadata,
+  colData = sample_metadata_genetics
+  ), 
+  
+  metaphlan_RelAbund.se = SummarizedExperiment(
+    assays = list("metaphlan_RelAbund" = WallenZD_2022_metaphlan_relab_wrangled$profiles),
+    rowData =  WallenZD_2022_metaphlan_relab_wrangled$taxonomies,
+    colData = sample_metadata.df
+  ),
+  
+  metaphlan_Counts.se = SummarizedExperiment(
+    assays = list("metaphlan_Counts" = WallenZD_2022_metaphlan_counts_wrangled$profiles),
+    rowData =  WallenZD_2022_metaphlan_counts_wrangled$taxonomies,
+    colData = sample_metadata.df
+  ),
+  
+  humann_KO.se = SummarizedExperiment(
+    assays = list("humann_KO" = WallenZD_2022_humann_KO$profiles),
+    rowData =  WallenZD_2022_humann_KO$description,
+    colData = sample_metadata.df
+  ),
+  
+  humann_pathways.se = SummarizedExperiment(
+    assays = list("humann_pathways" = WallenZD_2022_humann_pathways$profiles),
+    rowData =  WallenZD_2022_humann_pathways$description,
+    colData = sample_metadata.df
+  )
+)
+
+assays_vec <- lapply(summarizedExperiments.list, colnames) %>% 
+  lapply(length)
+
+assays_vec <- lapply(names(assays_vec), function(x) rep(x, assays_vec[[x]])) %>% 
+  purrr::reduce(c) %>% 
+  factor(levels = names(assays_vec))
+
+assays_sample_map <- data.frame(
+  assay = assays_vec,
+  primary = lapply(summarizedExperiments.list, colnames) %>% purrr::reduce(c),
+  colname = lapply(summarizedExperiments.list, colnames) %>% purrr::reduce(c)
+)
+
+WallenZD_2022_data.mae <- MultiAssayExperiment(
+  experiments = summarizedExperiments.list,
+  sampleMap = assays_sample_map,
+  colData = sample_metadata.df
+)
+```
+
+```{r clean environment and memory for next analyses}
+
+save(WallenZD_2022_data.mae, file = "WallenZD_2022_data.mae.RData")
+
+```
+
+# Final data object generated - a quick look
+
+```{r}
+WallenZD_2022_data.mae
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+

@@ -52,7 +52,7 @@ library(tidyverse)
 
 theme_set(theme_light())
 # load previously wrangled data
-load("../Data/wallenZD_data.mae.RData")
+load("../Data/WallenZD_2022_data.mae.RData")
 
 rm(BioC_required_packages,CRAN_required_packages)
 gc(verbose = FALSE)
@@ -64,7 +64,7 @@ things up in future analyses. This data object contains microbiome, pathway,
 participants data and genetic data.
 
 ```{r}
-wallenZD_data.mae
+WallenZD_2022_data.mae
 ```
 
 Genetic data have been retrieved with the protocol available in `00_WallenZD_DataPreparation.html`.
@@ -102,7 +102,7 @@ datatable(biomarkers_medrxiv.df %>% select(-species_metaphlan, `Number of connec
 ```{r}
 
 cluster_sums.df <- left_join(biomarkers_medrxiv.df, 
-          as.data.frame(assay(wallenZD_data.mae, "metaphlan_RelAbund.se")/100) %>%
+          as.data.frame(assay(WallenZD_2022_data.mae, "metaphlan_RelAbund.se")/100) %>%
             rownames_to_column("species_metaphlan"), 
           by = "species_metaphlan") %>% 
   split.data.frame(f = .$cluster_name) %>% 
@@ -152,7 +152,7 @@ Genetic variants were included if retained if:
 
 ```{r}
 
-samples_to_keep.df <- colData(wallenZD_data.mae[["metaphlan_RelAbund.se"]]) %>%
+samples_to_keep.df <- colData(WallenZD_2022_data.mae[["metaphlan_RelAbund.se"]]) %>%
   as.data.frame() %>% 
   filter(
     collection_method != "swab",
@@ -161,10 +161,10 @@ samples_to_keep.df <- colData(wallenZD_data.mae[["metaphlan_RelAbund.se"]]) %>%
     !is.na(Case_status)
     )
 
-variants_to_keep_rowData.df <- as.data.frame(rowData(wallenZD_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes_dosages.se"]])$GENE),])
+variants_to_keep_rowData.df <- as.data.frame(rowData(WallenZD_2022_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(WallenZD_2022_data.mae[["genotypes_dosages.se"]])$GENE),])
 rownames(variants_to_keep_rowData.df) <- variants_to_keep_rowData.df$RSID
 
-per_sample_dosages.df <- t(assay(wallenZD_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
+per_sample_dosages.df <- t(assay(WallenZD_2022_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
   as.data.frame() %>% 
   set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
   rownames_to_column("sample_name")
@@ -427,7 +427,8 @@ $$
 ClusterSum_i \sim Age + Seq.Depth + PD
 $$
 
-And extract the Fold Change of each cluster for PD $FC_i = \frac{PD}{Ctrl}$
+And extract the Fold Change of each cluster for PD $FC_i = \frac{PD}{Ctrl}$. Here
+crude p-values are of interest, so we will not adjust them.
 
 ```{r}
 lm_split_by_variant_and_dosage <- data_alltogether.df %>%
@@ -449,16 +450,12 @@ lm_split_by_variant_and_dosage <- data_alltogether.df %>%
     lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status, data = .x)
     broom::tidy(lm_results)
   }) %>% 
-  ungroup() %>% 
-  # adjust p-values by factor
-  mutate(
-    p.adj = ifelse(p.value * n_tests >= 1, 1, p.value * n_tests)
-  ) 
+  ungroup()
 ```
 
 ```{r table split results}
 signif_assocs <- lm_split_by_variant_and_dosage %>%
-  filter(term == "Case_statusPD", p.adj < 0.1)
+  filter(term == "Case_statusPD", p.value < 0.1)
   
 summary_table <- lm_split_by_variant_and_dosage %>% 
   filter(term == "Case_statusPD") %>% 
@@ -467,7 +464,7 @@ summary_table <- lm_split_by_variant_and_dosage %>%
                           estimate, 
                           estimate - 1.96 * std.error, 
                           estimate + 1.96 * std.error),
-    p_adj = sprintf("%.3e",p.adj)
+    p_adj = sprintf("%.3e",p.value)
   ) %>%
   select(clusterName, variant, dosage, estimate_ci, p_adj) %>% 
   pivot_wider(
@@ -478,25 +475,25 @@ summary_table <- lm_split_by_variant_and_dosage %>%
   arrange(clusterName, variant) %>% 
   .[,c(1,2,3,6,4,7,5,8)] %>% 
   ungroup() %>% 
-  filter(as.numeric(p_adj_0) < 0.1 | as.numeric(p_adj_1) < 0.1 | as.numeric(p_adj_2) < 0.1) %>% 
+  filter(as.numeric(p_adj_0) < 0.05 | as.numeric(p_adj_1) < 0.05 | as.numeric(p_adj_2) < 0.05) %>% 
   mutate(
-    p_adj_0 = ifelse(as.numeric(p_adj_0) < 0.1, paste(p_adj_0, "*"), p_adj_0),
-    p_adj_1 = ifelse(as.numeric(p_adj_1) < 0.1, paste(p_adj_1, "*"), p_adj_1),
-    p_adj_2 = ifelse(as.numeric(p_adj_2) < 0.1, paste(p_adj_2, "*"), p_adj_2)
+    p_adj_0 = ifelse(as.numeric(p_adj_0) < 0.05, paste(p_adj_0, "*"), p_adj_0),
+    p_adj_1 = ifelse(as.numeric(p_adj_1) < 0.05, paste(p_adj_1, "*"), p_adj_1),
+    p_adj_2 = ifelse(as.numeric(p_adj_2) < 0.05, paste(p_adj_2, "*"), p_adj_2)
   )
 
 highlight_rows <- which(
-  as.numeric(gsub(" *", "", summary_table$p_adj_0, fixed = TRUE)) < 0.1 | 
-    as.numeric(gsub(" *", "", summary_table$p_adj_1, fixed = TRUE)) < 0.1 |
-    as.numeric(gsub(" *", "", summary_table$p_adj_2, fixed = TRUE)) < 0.1
+  as.numeric(gsub(" *", "", summary_table$p_adj_0, fixed = TRUE)) < 0.05 | 
+    as.numeric(gsub(" *", "", summary_table$p_adj_1, fixed = TRUE)) < 0.05 |
+    as.numeric(gsub(" *", "", summary_table$p_adj_2, fixed = TRUE)) < 0.05
   )
 
 
 summary_table %>% 
   as.matrix() %>% 
-  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta (95% C.I.)", "P.adj"), 3))) %>%
+  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta (95% C.I.)", "P.val"), 3))) %>%
   
-  kable("html", caption = "Overview of clusters' associations with PD compared to Controls split by each variant's dosage. Only variants with at least 1 significant association in any of the 3 dosages were kept in the table. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the p.adj column. 'Beta' values indicate the association between sex. The analysis was restricted to variants with at least 5 individuals with PD and 5 Controls in each dosage. NAs are cases where dosages did not have enough cases and controls to model.") %>%
+  kable("html", caption = "Overview of clusters' associations with PD compared to Controls split by each variant's dosage. Only variants with at least 1 significant association in any of the 3 dosages were kept in the table. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the P.val column. 'Beta' values indicate the association between sex. The analysis was restricted to variants with at least 5 individuals with PD and 5 Controls in each dosage. NAs are cases where dosages did not have enough cases and controls to model.") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
   add_header_above(c(" " = 2, "Dosage 0" = 2, "Dosage 1" = 2, "Dosage 2" = 2)) %>%
   collapse_rows(columns = 1, valign = "top")
@@ -512,10 +509,10 @@ lm_split_by_variant_and_dosage %>%
   scale_fill_brewer() +
   geom_text(
     data = lm_split_by_variant_and_dosage %>%
-      filter(term == "Case_statusPD", p.adj < 0.1) %>%
+      filter(term == "Case_statusPD", p.value < 0.5) %>%
       complete(clusterName, variant, dosage, fill = list(estimate = 0)) %>%
       mutate(yposit = sign(estimate)*(abs(estimate) + 0.01)), 
-    mapping = aes(x = variant, y = yposit, label = ifelse(p.adj < 0.1, "*", ""), group = dosage), 
+    mapping = aes(x = variant, y = yposit, label = ifelse(p.value < 0.05, "*", ""), group = dosage), 
             position = position_dodge(width = 1), size = 4) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "top") +
   labs(
@@ -526,8 +523,7 @@ lm_split_by_variant_and_dosage %>%
 
 ```
 
-
-# Approach 2: Microbiome wide regression with another method, followed by GSEA (WIP)
+# Approach 1.5: Microbiome wide regression with another method, followed by GSEA (WIP)
 
 As a sensitivity analysis, we can agnostically test all bacteria for association with 
 genetic variants in interaction with PD. We can use `edgeR`, suggested by Levi 
@@ -543,13 +539,13 @@ set enrichment analysis using as gene sets:
 ## LinDA on SNCA and HLA
 
 ```{r}
-samples_to_keep.df <- colData(wallenZD_data.mae[["metaphlan_RelAbund.se"]]) %>%
+samples_to_keep.df <- colData(WallenZD_2022_data.mae[["metaphlan_RelAbund.se"]]) %>%
   as.data.frame() %>% 
   filter(collection_method != "swab")
 
-variants_to_keep_rowData.df <- as.data.frame(rowData(wallenZD_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(wallenZD_data.mae[["genotypes_dosages.se"]])$GENE),])
+variants_to_keep_rowData.df <- as.data.frame(rowData(WallenZD_2022_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(WallenZD_2022_data.mae[["genotypes_dosages.se"]])$GENE),])
 
-per_sample_dosages.df <- t(assay(wallenZD_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
+per_sample_dosages.df <- t(assay(WallenZD_2022_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
   as.data.frame() %>% 
   set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
   rownames_to_column("sample_name")
@@ -569,7 +565,7 @@ library(LinDA)
 genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(meta_with_variants), value = TRUE), 
        function(gt)
        suppressMessages(linda(
-  otu.tab = assay(wallenZD_data.mae, "metaphlan_Counts.se")[,meta_with_variants$sample_name],
+  otu.tab = assay(WallenZD_2022_data.mae, "metaphlan_Counts.se")[,meta_with_variants$sample_name],
   meta = meta_with_variants,
   formula = paste("~ Age_at_collection + seqs_scaled + ", paste(gt, "Case_status", sep = "*")), 
   p.adj.method = "BH", 
@@ -682,6 +678,92 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
     cat("\n")
 }
 ```
+
+# Dirichlet Multinomial clustering correlates with Haydeh's picks?
+
+This is a Bayesian approach of clustering counts data, works pretty nicely, 
+assuming compositionality.
+
+```{r DirichletMultinomial calculation, cache=TRUE}
+library(DirichletMultinomial)
+
+counts_tab <- t(assay(WallenZD_2022_data.mae, "metaphlan_Counts.se"))
+
+#' model up to 10 allowed clusters
+dmn_raw_output <- parallel::mclapply(
+  1:10 %>% set_names(paste("k =", .)),
+  function(n)
+    dmn(count = counts_tab, k = n, verbose = interactive(), seed = 2993), 
+  mc.cores = 8
+  )
+
+dir.create("../Data/wallen2022_DirichletMultinomial/", showWarnings = FALSE)
+saveRDS(dmn_raw_output, file = paste0("../Data/wallen2022_DirichletMultinomial/", "DMN_raw_output_", Sys.Date(), ".Rds"))
+```
+
+```{r}
+k <- 6
+```
+
+Dirichlet components will be forced to have `r k` clusters. Although the 
+algorithm suggests 3 (The smaller the `laplace` estimate, the better the model).
+
+```{r}
+
+laplace_values <- sapply(dmn_raw_output$dmn_output, laplace)
+plot(laplace_values, type = "b", col = "darkgray", xlab = "N. Dirichlet Components modeled", ylab = "Laplace Fit evaluation")
+points(x = which.min(laplace_values), y = laplace_values[which.min(laplace_values)] , pch = 16, cex = 1.5)
+
+```
+
+
+```{r, eval=FALSE}
+#' find number of clusters with the least information (minimum of BIC curve)
+clusters_arbitraryN <- dmn_raw_output$dmn_output[[k]]
+
+CST_probs <- DirichletMultinomial::mixture(clusters_arbitraryN)
+
+CST_assigns <- as.character(apply(CST_probs, 1, function(x) {
+  best_x <- max(x)
+  second_best_x <- max(x[x != best_x])
+  CST_final <- ifelse(
+    best_x < 0.9 & (best_x - second_best_x) < 0.1, 
+    yes = paste(which(x == best_x), which(x == second_best_x), sep = "/"),
+    no = which(x == best_x)
+  )
+  
+  return(CST_final)
+}))
+
+CST_final <- cbind.data.frame(CST_assigns, CST_probs) %>% 
+  set_names(c("CST_assign", paste("CST", 1:ncol(CST_probs), "prob", sep = "_"))) %>% 
+  rownames_to_column("sample_name")
+
+metadata_with_CST.df <- inner_join(CST_final, data_alltogether.df, by = "sample_name")
+
+metadata_with_CST.df
+```
+
+
+```{r, eval=FALSE}
+ggarrange(
+  # plot fiber degraders
+ggplot(metadata_with_CST.df, aes(x = Case_status, y = `Fiber Degraders`, color = CST_assign)) + 
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, seed = 1234)) +
+  geom_boxplot(outliers = FALSE, alpha = 0.4) ,
+  # plot Bifidobacteria
+ggplot(metadata_with_CST.df, aes(x = Case_status, y = Bifidobacteria, color = CST_assign)) + 
+  geom_point(position = position_jitterdodge(jitter.width = 0.1, seed = 1234)) +
+  geom_boxplot(outliers = FALSE, alpha = 0.4),
+
+ncol = 2, common.legend = TRUE
+) 
+
+
+```
+
+As a quick look, Dirichlet components do not correlate well with clusters chosen
+by Haydeh.
 
 # Open Questions
 
