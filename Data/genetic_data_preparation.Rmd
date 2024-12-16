@@ -1,0 +1,226 @@
+---
+title: "GWAS catalog data preparation"
+author: "Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: show
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+Latest render: `r format(Sys.time(), "Date: %Y-%b-%d Time: %H:%M:%S")`
+
+```{r knitr setup}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+```
+
+```{r library setup, include=FALSE}
+# Check and install necessary CRAN packages
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
+
+install.packages(
+  CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
+)
+
+# Check and install necessary Bioconductor packages
+BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
+
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
+
+
+# load basic data manipulation packages
+library(phyloseq)
+library(DT)
+library(kableExtra)
+library(MultiAssayExperiment)
+library(tidyverse)
+
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+
+for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
+  source(f)
+}
+```
+
+# Directory and data preparation
+
+First thing is clone the repository I made for the Payami Lab and add make sure 
+that the `.gitignore` file has exceptions for unwanted data sharing into the 
+repository. `NB: This has to be done manually`
+
+# Work directories and genetic data
+
+1 - Download microbiome data from Zenodo 
+
+**Maker sure you start from the base Git directory**
+
+```{bash setup data directory, eval=FALSE}
+cd ~/PayamiH/
+
+wget https://zenodo.org/records/7246185/files/Source_Data_24Oct2022.xlsx -O Data/DoD_input.xlsx
+
+```
+
+2 - bcftools setup
+
+There are several options. The one proposed below is one of the most universal,
+meaning many can set it up.
+
+```{bash setup micromamba only if needed, eval=FALSE}
+cd ~
+
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj micromamba/bin
+./bin/micromamba shell init -s bash -r ~/micromamba
+
+micromamba config append channels bioconda
+
+micromamba create -n geneticTools -c bioconda
+
+micromamba activate geneticTools
+
+micromamba install bcftools
+
+```
+
+3 - Indexing of VCF file for fast querying (necessary for bcftools)
+
+```{bash tabix vcf files, eval=FALSE}
+cd /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/
+
+micromamba activate geneticTools
+
+for chr in `ls *.dose.vcf.gz`; do sbatch -c1 --mem 8G -pexpress --wrap "bcftools index -t ${chr}"; done
+```
+
+4 - Extract samples list to query with `bcftools query`, this is done considering the following:
+
+  1. The only samples needed for the analysis are those beginning with `D`
+  2. Keep only samples from point 1 that present across all VCF files. This is 
+  redundant but done anyway.
+
+The last step is important for bcftools to work properly in querying samples. 
+
+# Download all unique GWAS catalog variants with PD (based on `rsID`)
+
+Now we should download the genetic variants that we are interested in. This is the
+following method used to retrieve these variants.
+
+  1. search associations using the disease ID `MONDO_0005180`
+  
+  2. join all useful data together (from step 1)
+  
+  3. filter for variants with $Pvalue < 5 \times 10^{-8}$ (more than half of these
+  do not reach that threshold)
+  
+  4. Harmonize all variants with `chromosome`, `position`, `risk allele`, ...
+  
+```{r download GWAS catalog PD variants}
+# retrieve associations with GWAS catalog traits
+parkinson_gwasCatalog.gwasrapidd <- gwasrapidd::get_associations(efo_id = "MONDO_0005180")
+
+tmp <- list(
+  select(parkinson_gwasCatalog.gwasrapidd@associations, 
+         association_id, or_per_copy_number, beta_unit, pvalue),
+  select(parkinson_gwasCatalog.gwasrapidd@risk_alleles, 
+         association_id, variant_id, risk_allele),
+  select(parkinson_gwasCatalog.gwasrapidd@genes, 
+         association_id, gene_name)) %>% 
+  reduce(full_join, by = "association_id") %>% 
+  # remove duplicated lines, preferring those where a rik allele has been reported
+  arrange(risk_allele) %>%       
+  distinct(variant_id, .keep_all = TRUE) %>% 
+  # keep only variants that passed nominal Genome-wide significance
+  filter(pvalue < 5e-8)
+
+
+ensembl <- biomaRt::useEnsembl(biomart = "snps", dataset = "hsapiens_snp")
+  
+rsid_to_CHR_POS <- biomaRt::getBM(
+  attributes = c("refsnp_id", "chr_name", "chrom_start", "chrom_end"), 
+      filters = "snp_filter", 
+      values = tmp$variant_id, 
+      mart = ensembl) %>% 
+  rename(
+    variant_id = refsnp_id
+  ) %>%
+  #keep only well defined chromosome scaffolds, including sex chromosome
+  filter(
+    !startsWith(chr_name, "H")
+  ) %>% 
+  mutate(
+    chr_name = factor(paste0("chr", chr_name), levels = as.character(paste0("chr", c(1:22, "X", "Y"))))
+  ) %>% 
+  select(
+    CHROM = chr_name, 
+    CHROM_START = chrom_start, 
+    CHROM_END = chrom_end, 
+    variant_id
+    ) %>% 
+  # same trick, to be sure we have only variants with gene names associated, wherever possible
+  arrange(rowSums(is.na(.))) %>%       
+  distinct(variant_id, .keep_all = TRUE)
+
+parkinson_variants_gwas_catalog.df <- full_join(tmp, rsid_to_CHR_POS, by = "variant_id") %>% 
+  select(
+    CHROM, CHROM_START, CHROM_END, RSID = variant_id, GENE = gene_name, PD_RISK_ALLELE = risk_allele
+  ) %>%
+  arrange(CHROM, CHROM_START)
+
+parkinson_variants_gwas_catalog.df$CHROM[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "chr6"
+parkinson_variants_gwas_catalog.df$CHROM_START[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$CHROM_END[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "32588205"
+parkinson_variants_gwas_catalog.df$RSID[parkinson_variants_gwas_catalog.df$RSID == "6:32588205"] <- "rsUnassigned"
+
+datatable(parkinson_variants_gwas_catalog.df, caption = "Unique variants available in the GWAS catalog with P-value , 5E-8. Variants without chromosome and position available will be discarded. Variant with RSID 'rsUnassigned' comes from the original value '6:32588205', which was manually curated to be included into the analysis. Gene annotations were taken 'as is' from the GWAS catalog, to limit variability. Notice that the biomaRt annotation was returning different annotations for < 10% variants.")
+
+```
+
+Unfortunately, despite imputation and manual curation, variant `6:32588205` was
+not found in our imputed genotype datasets.
+
+```{r, eval=!interactive()}
+library(magrittr)
+parkinson_variants_gwas_catalog.df %<>% filter(!is.na(CHROM), !is.na(CHROM_START))
+
+write_tsv(parkinson_variants_gwas_catalog.df, file = "GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv")
+
+for(chr in unique(parkinson_variants_gwas_catalog.df$CHROM)){
+  writeLines(text = paste0(filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM, ":", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_START,"-", filter(parkinson_variants_gwas_catalog.df, CHROM == chr)$CHROM_END), con = paste0("GWAS_catalog_PD_variants/", chr, "_variants_Tabix.txt"))
+}
+
+```
+
+```{bash, eval=FALSE}
+# from the PayamiH as base directory, do the following
+cd ~/PayamiH/Data/GWAS_catalog_PD_variants 
+
+mkdir queried_variants_PD
+
+micromamba activate geneticTools
+
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%DS]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:DS//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
+
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%GT]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:GT//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
+
+```
+
+```{bash eval=FALSE}
+rm /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/slurm*
+```
+
