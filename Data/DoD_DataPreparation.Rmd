@@ -1,0 +1,357 @@
+---
+title: "DoD data preparation into MultiAssayExperiment format"
+author: "Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: show
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+Latest render: `r format(Sys.time(), "Date: %Y-%b-%d Time: %H:%M:%S")`
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+```
+
+```{r, include=FALSE}
+# Check and install necessary CRAN packages
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
+
+install.packages(
+  CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
+)
+
+# Check and install necessary Bioconductor packages
+BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
+
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
+
+
+# load basic data manipulation packages
+library(phyloseq)
+library(DT)
+library(kableExtra)
+library(MultiAssayExperiment)
+library(tidyverse)
+
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+
+for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
+  source(f)
+}
+```
+
+# Prepare microbiome-related data
+
+```{r}
+
+# get Metaphlan relative abundances
+DoD_metaphlan_relab <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "metaphlan_rel_ab") %>% 
+  wrangle_metaphlan("Species")
+
+# get Metaphlan estimated counts
+DoD_metaphlan_counts <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "metaphlan_counts") %>% wrangle_metaphlan("Species")
+DoD_metaphlan_counts$profiles <- round(DoD_metaphlan_counts$profiles, 0)
+
+# get HUMAnN KO tables
+DoD_humann_KO <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "humann_KO_group_counts") %>% 
+  wrangle_humann(input_type = "ko")
+DoD_humann_KO$profiles <- round(DoD_humann_KO$profiles, 0)
+
+# get HUMAnN Pathway tables
+DoD_humann_pathways <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "humann_pathway_counts") %>% wrangle_humann(input_type = "pathways")
+DoD_humann_pathways$profiles <- round(DoD_humann_pathways$profiles, 0)
+
+# get sample metadata
+DoD_metadata <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "subject_metadata") %>% 
+  as.data.frame()
+rownames(DoD_metadata) <- DoD_metadata$sample_name
+
+# find samples intersection across experiments and metadata
+
+samples_per_data_piece <- list(
+  "Metaphlan (Relative Abundance)" = colnames(DoD_metaphlan_relab$profiles),
+  "Metaphlan (Counts)" = colnames(DoD_metaphlan_counts$profiles),
+  "HUMAnN3 (Kegg Orthology)" = colnames(DoD_humann_KO$profiles),
+  "HUMAnN3 (MetaCyc Pathways)" = colnames(DoD_humann_pathways$profiles),
+  "Metadata" = rownames(DoD_metadata)
+  )
+
+samples_intersect <- reduce(samples_per_data_piece, intersect)
+
+
+
+# reorder colnames so they all match the metadata
+
+DoD_metaphlan_relab$profiles <- DoD_metaphlan_relab$profiles[, samples_intersect]
+DoD_metaphlan_counts$profiles <- DoD_metaphlan_counts$profiles[, samples_intersect]
+DoD_humann_KO$profiles <- DoD_humann_KO$profiles[, samples_intersect]
+DoD_humann_pathways$profiles <- DoD_humann_pathways$profiles[, samples_intersect]
+
+sample_metadata.df <- DoD_metadata[samples_intersect,] %>% 
+  mutate(seqs_scaled = scale(total_sequences))
+
+
+
+```
+
+## Prepare genotype data
+
+Both dosages and hardcalls.
+
+```{r load variants dosages and hardcalls}
+# Load all variants found in GWAS catalog under our criteria
+
+gwasCatalog_variants_dosages_All <- data.table::fread("GWAS_catalog_PD_variants/PD_variants_GWAS_catalog.tsv", data.table = FALSE) %>% 
+  rename(POS = CHROM_START,
+         PD.RISK.ALLELE = PD_RISK_ALLELE) %>% 
+  select(-CHROM_END) %>% 
+  as.data.frame()
+
+# Load variants found in TOPMed datasets, with all samples available (> 5k)
+
+gwasCatalog_variants_dosages_in_TOPMed.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Dosages.txt", full.names = T) %>% 
+  sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
+  purrr::reduce(rbind) %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  ) %>%
+  mutate(across(contains("INFO"), as.numeric)) %>% 
+  # as last step to be able to assign row names 2 chunks later
+  as.data.frame()
+  
+# load hardcalls 
+  
+gwasCatalog_variants_hardcalls_in_TOPMed.df <- list.files(path = "GWAS_catalog_PD_variants/queried_variants_PD/", pattern = "*Genotypes.txt", full.names = T) %>% 
+  sapply(data.table::fread, USE.NAMES = TRUE, simplify = FALSE) %>% 
+  lapply(inner_join, gwasCatalog_variants_dosages_All, by = c("CHROM", "POS")) %>% 
+  lapply(relocate, PD.RISK.ALLELE, RSID, GENE, .after = ALT) %>% 
+  purrr::reduce(rbind) %>% 
+  # wrangle INFO column for further info
+  separate_rows(INFO, sep = ";") %>%
+  separate(INFO, into = c("key", "value"), sep = "=", fill = "right") %>%
+  pivot_wider(names_from = key, values_from = value) %>%
+  mutate(across(everything(), ~replace_na(.x, NA)),
+         IMPUTED = ifelse(
+           is.na(ER2), "TRUE", "FALSE"), 
+         TYPED = NULL) %>% 
+  
+  relocate(
+    INFO_AF = AF, INFO_MAF = MAF, INFO_R2 = R2, INFO_ER2 = ER2, INFO_IMPUTED = IMPUTED, 
+    .after = GENE
+  ) %>%
+  mutate(across(contains("INFO"), as.numeric)) %>% 
+  # as last step to be able to assign row names 2 chunks later
+  as.data.frame()
+
+# summary table of variants found in the dataset
+nVars_by_genes_All <- gwasCatalog_variants_dosages_All %>% 
+  mutate(
+    `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
+    `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
+    OTHER = !grepl("SNCA|HLA|GBA|LRRK2", GENE)) %>% 
+  .[,(ncol(.)-2):ncol(.)] %>% 
+  colSums()
+
+nVars_by_genes_TOPMed <- gwasCatalog_variants_dosages_in_TOPMed.df %>% 
+  mutate(
+    `SNCA or HLA` = grepl("SNCA|HLA", GENE), 
+    `LRRK2 or GBA` = grepl("LRRK2|GBA", GENE), 
+    OTHER = !grepl("SNCA|HLA|GBA|LRRK2", GENE)) %>% 
+  .[,(ncol(.)-2):ncol(.)] %>% 
+  colSums()
+
+cbind(c("Tot" = sum(nVars_by_genes_All), nVars_by_genes_All), 
+      c("Tot" = sum(nVars_by_genes_TOPMed), nVars_by_genes_TOPMed)) %>% 
+  
+  magrittr::set_colnames(c("GWAS Catalog", "TOPMed imputed PayamiLab samples")) %>% 
+  kableExtra::kbl(caption = "Comparison of genetic variants associated with PD found in the GWAS catalog and in TOPMed imputed genotypes") %>% 
+  kableExtra::kable_styling() %>% 
+  kableExtra::add_header_above(c(" " = 1, "N. unique variants associated with PD" = 2))
+
+```
+
+## Rename genotype data with grep and str_extract
+
+The sample names in the TOPMed data are duplicated with the 
+`sample1234_sample1234`, while microbiome data sets have only `sample1234`.
+
+```{r}
+
+variant_metadata_cols <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[1:max(which(grepl("INFO", colnames(gwasCatalog_variants_dosages_in_TOPMed.df))))]
+sampleIDs <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[grepl(paste(paste0(rownames(sample_metadata.df), collapse = "|")), colnames(gwasCatalog_variants_dosages_in_TOPMed.df))]
+
+newColnames <- c(variant_metadata_cols, sampleIDs)
+#' This next step is crucial, because in many cases samples don't immediately match between 
+#' microbiome and TOPMed data sets.
+#' My strategy was to extract sample names with str_extract, because it returns 
+#' only one match, the first.
+
+names(newColnames) <- c(variant_metadata_cols, str_extract(sampleIDs, paste(rownames(sample_metadata.df), collapse = "|")))
+
+# subset gwas datasets with available samples in the microbiome dataset
+
+gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df <- select(gwasCatalog_variants_dosages_in_TOPMed.df, all_of(newColnames))
+gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df <- select(gwasCatalog_variants_hardcalls_in_TOPMed.df, all_of(newColnames))
+
+```
+
+At this step, we have generated a set of genotypes to test against the microbiome
+as found in the GWAS catalog and our genotypes. It is a `samples x genotypes` matrix.
+
+
+```{r}
+# manipulate genetics data a bit, to make it more usable in the SummarizedExperiment
+# context
+
+tmp <- gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df
+samples_intersect_genetics <- intersect(colnames(tmp), rownames(sample_metadata.df))
+metadata_cols_genetics <- colnames(tmp)[1:max(grep("INFO_", colnames(tmp)))]
+variants_made_unique <- make.unique(tmp$RSID)
+rownames(tmp) <- variants_made_unique
+
+genetics_matrix_dosages <- as.matrix(tmp[variants_made_unique, samples_intersect_genetics])
+
+tmp <- gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df
+rownames(tmp) <- variants_made_unique
+
+genetics_matrix_hardcalls <- as.matrix(tmp[variants_made_unique, samples_intersect_genetics])
+
+
+genetics_metadata <- tmp[variants_made_unique, metadata_cols_genetics]
+sample_metadata_genetics <- sample_metadata.df[samples_intersect_genetics,]
+```
+
+## Generate a `MultiAssayExperiment` object with all data together
+
+```{r}
+
+library(MultiAssayExperiment, quietly = TRUE, verbose = FALSE)
+
+summarizedExperiments.list <- list(
+  genotypes_dosages.se = SummarizedExperiment(
+    assays = list("genotypes_dosages" = genetics_matrix_dosages, "genotypes_hardcalls" = genetics_matrix_hardcalls),
+    rowData = genetics_metadata,
+  colData = sample_metadata_genetics
+  ),
+  
+  genotypes_hardcalls.se = SummarizedExperiment(
+    assays = list("genotypes_hardcalls" = genetics_matrix_hardcalls),
+    rowData = genetics_metadata,
+  colData = sample_metadata_genetics
+  ), 
+  
+  metaphlan_RelAbund.se = SummarizedExperiment(
+    assays = list("metaphlan_RelAbund" = DoD_metaphlan_relab$profiles),
+    rowData =  DoD_metaphlan_relab$taxonomies,
+    colData = sample_metadata.df
+  ),
+  
+  metaphlan_Counts.se = SummarizedExperiment(
+    assays = list("metaphlan_Counts" = DoD_metaphlan_counts$profiles),
+    rowData =  DoD_metaphlan_counts$taxonomies,
+    colData = sample_metadata.df
+  ),
+  
+  humann_KO.se = SummarizedExperiment(
+    assays = list("humann_KO" = DoD_humann_KO$profiles),
+    rowData =  DoD_humann_KO$description,
+    colData = sample_metadata.df
+  ),
+  
+  humann_pathways.se = SummarizedExperiment(
+    assays = list("humann_pathways" = DoD_humann_pathways$profiles),
+    rowData =  DoD_humann_pathways$description,
+    colData = sample_metadata.df
+  )
+)
+
+assays_vec <- lapply(summarizedExperiments.list, colnames) %>% 
+  lapply(length)
+
+assays_vec <- lapply(names(assays_vec), function(x) rep(x, assays_vec[[x]])) %>% 
+  purrr::reduce(c) %>% 
+  factor(levels = names(assays_vec))
+
+assays_sample_map <- data.frame(
+  assay = assays_vec,
+  primary = lapply(summarizedExperiments.list, colnames) %>% purrr::reduce(c),
+  colname = lapply(summarizedExperiments.list, colnames) %>% purrr::reduce(c)
+)
+
+DoD_data.mae <- MultiAssayExperiment(
+  experiments = summarizedExperiments.list,
+  sampleMap = assays_sample_map,
+  colData = sample_metadata.df
+)
+```
+
+```{r clean environment and memory for next analyses}
+
+save(DoD_data.mae, file = "DoD_data.mae.RData")
+
+```
+
+# Final data object generated - a quick look
+
+```{r}
+DoD_data.mae
+```
+
+# Samples not fully retrieved
+
+## Samples excluded at each step
+
+```{r}
+
+cbind(
+  sapply(samples_per_data_piece, length),
+  rep(length(samples_intersect), length(samples_per_data_piece)),
+  rep(length(samples_intersect_genetics), length(samples_per_data_piece))
+  ) %>%
+  magrittr::set_colnames(c("Unifiltered", "With Microbiome", "With Genetics")) %>% 
+  kbl(caption = "Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)")
+```
+
+
+## Microbiome samples not retrieved in Genetic data
+
+```{r}
+colnames(DoD_data.mae[["metaphlan_RelAbund.se"]])[!(colnames(DoD_data.mae[["metaphlan_RelAbund.se"]]) %in% colnames(DoD_data.mae[["genotypes_dosages.se"]]))]
+```
+
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
