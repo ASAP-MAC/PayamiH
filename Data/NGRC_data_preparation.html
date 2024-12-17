@@ -2975,7 +2975,7 @@ margin-left: 0 !important;
    
 <!-- Don't indent these lines or it will mess pre blocks indentation --> 
 <div id="main">
-<p>Latest render: Date: 2024-Dec-16 Time: 17:50:22</p>
+<p>Latest render: Date: 2024-Dec-16 Time: 18:10:00</p>
 <div id="prepare-microbiome-related-data" class="section level1" number="1">
 <h1><span class="header-section-number">1</span> Prepare microbiome-related data</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># get sample metadata</span></span>
@@ -3341,10 +3341,11 @@ as found in the GWAS catalog and our genotypes. It is a <code>samples x genotype
 <div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">cbind</span>(</span>
 <span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">sapply</span>(samples_per_data_piece, length),</span>
 <span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect), <span class="fu">length</span>(samples_per_data_piece)),</span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_genetics), <span class="fu">length</span>(samples_per_data_piece))</span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">c</span>(<span class="st">&quot;Unifiltered&quot;</span>, <span class="st">&quot;With Microbiome&quot;</span>, <span class="st">&quot;With Genetics&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  <span class="fu">kbl</span>(<span class="at">caption =</span> <span class="st">&quot;Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)&quot;</span>)</span></code></pre></div>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_after_exclusion), <span class="fu">length</span>(samples_per_data_piece)),</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_genetics), <span class="fu">length</span>(samples_per_data_piece))</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">c</span>(<span class="st">&quot;Unifiltered&quot;</span>, <span class="st">&quot;With Microbiome&quot;</span>, <span class="st">&quot;After sample exclusion&quot;</span>, <span class="st">&quot;Also with Genetic data&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>  <span class="fu">kbl</span>(<span class="at">caption =</span> <span class="st">&quot;Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)&quot;</span>)</span></code></pre></div>
 <table>
 <caption>
 <span id="tab:unnamed-chunk-9">Table 3.1: </span>Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)
@@ -3360,7 +3361,10 @@ Unifiltered
 With Microbiome
 </th>
 <th style="text-align:right;">
-With Genetics
+After sample exclusion
+</th>
+<th style="text-align:right;">
+Also with Genetic data
 </th>
 </tr>
 </thead>
@@ -3374,6 +3378,9 @@ Metaphlan (Relative Abundance)
 </td>
 <td style="text-align:right;">
 344
+</td>
+<td style="text-align:right;">
+343
 </td>
 <td style="text-align:right;">
 328
@@ -3390,6 +3397,9 @@ Metaphlan (Counts)
 344
 </td>
 <td style="text-align:right;">
+343
+</td>
+<td style="text-align:right;">
 328
 </td>
 </tr>
@@ -3402,6 +3412,9 @@ HUMAnN3 (Kegg Orthology)
 </td>
 <td style="text-align:right;">
 344
+</td>
+<td style="text-align:right;">
+343
 </td>
 <td style="text-align:right;">
 328
@@ -3418,6 +3431,9 @@ HUMAnN3 (MetaCyc Pathways)
 344
 </td>
 <td style="text-align:right;">
+343
+</td>
+<td style="text-align:right;">
 328
 </td>
 </tr>
@@ -3430,6 +3446,9 @@ Metadata
 </td>
 <td style="text-align:right;">
 344
+</td>
+<td style="text-align:right;">
+343
 </td>
 <td style="text-align:right;">
 328

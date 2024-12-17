@@ -353,10 +353,12 @@ NGRC_data.mae
 cbind(
   sapply(samples_per_data_piece, length),
   rep(length(samples_intersect), length(samples_per_data_piece)),
+  rep(length(samples_intersect_after_exclusion), length(samples_per_data_piece)),
   rep(length(samples_intersect_genetics), length(samples_per_data_piece))
   ) %>%
-  magrittr::set_colnames(c("Unifiltered", "With Microbiome", "With Genetics")) %>% 
+  magrittr::set_colnames(c("Unifiltered", "With Microbiome", "After sample exclusion", "Also with Genetic data")) %>% 
   kbl(caption = "Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)")
+
 ```
 
 
