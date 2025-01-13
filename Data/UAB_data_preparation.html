@@ -7,7 +7,7 @@
 
         <meta name="author" content="Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami" />
     
-        <meta name="date" content="2024-12-16" />
+        <meta name="date" content="2025-01-13" />
     
     <title>UAB data preparation into MultiAssayExperiment format</title>
 
@@ -2951,8 +2951,7 @@ margin-left: 0 !important;
       <li><a href="#prepare-microbiome-related-data" id="toc-prepare-microbiome-related-data"><span class="toc-section-number">1</span> Prepare microbiome-related data</a>
       <ul>
       <li><a href="#prepare-genotype-data" id="toc-prepare-genotype-data"><span class="toc-section-number">1.1</span> Prepare genotype data</a></li>
-      <li><a href="#continue-from-here---find-which-metagenomics-samples-also-have-genetic-data" id="toc-continue-from-here---find-which-metagenomics-samples-also-have-genetic-data"><span class="toc-section-number">1.2</span> Continue from here - Find which metagenomics samples also have genetic data</a></li>
-      <li><a href="#generate-a-multiassayexperiment-object-with-all-data-together" id="toc-generate-a-multiassayexperiment-object-with-all-data-together"><span class="toc-section-number">1.3</span> Generate a <code>MultiAssayExperiment</code> object with all data together</a></li>
+      <li><a href="#generate-a-multiassayexperiment-object-with-all-data-together" id="toc-generate-a-multiassayexperiment-object-with-all-data-together"><span class="toc-section-number">1.2</span> Generate a <code>MultiAssayExperiment</code> object with all data together</a></li>
       </ul></li>
       <li><a href="#final-data-object-generated---a-quick-look" id="toc-final-data-object-generated---a-quick-look"><span class="toc-section-number">2</span> Final data object generated - a quick look</a></li>
       <li><a href="#samples-not-fully-retrieved" id="toc-samples-not-fully-retrieved"><span class="toc-section-number">3</span> Samples not fully retrieved</a>
@@ -2965,7 +2964,7 @@ margin-left: 0 !important;
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
                   <p class="author"><span class="glyphicon glyphicon-user"></span> Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami</p>
-                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2024-12-16</p>
+                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2025-01-13</p>
           </div>
    </div>
      
@@ -2975,64 +2974,83 @@ margin-left: 0 !important;
    
 <!-- Don't indent these lines or it will mess pre blocks indentation --> 
 <div id="main">
-<p>Latest render: Date: 2024-Dec-16 Time: 18:10:54</p>
+<p>Latest render: Date: 2025-Jan-13 Time: 12:50:48</p>
 <div id="prepare-microbiome-related-data" class="section level1" number="1">
 <h1><span class="header-section-number">1</span> Prepare microbiome-related data</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># get sample metadata</span></span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>UAB_metadata <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;subject_metadata&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>  <span class="co"># this is to get only UAB samples</span></span>
-<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  <span class="fu">filter</span>(Location <span class="sc">==</span> <span class="st">&quot;Birmingham_AL&quot;</span>)</span>
-<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">rownames</span>(UAB_metadata) <span class="ot">&lt;-</span> UAB_metadata<span class="sc">$</span>SubjectID</span>
-<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a></span>
-<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="co"># get Metaphlan relative abundances</span></span>
-<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>UAB_metaphlan_relab <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;metaphlan_rel_ab&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>  <span class="fu">wrangle_metaphlan</span>(<span class="st">&quot;Species&quot;</span>)</span>
-<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>UAB_metaphlan_relab<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_relab<span class="sc">$</span>profiles[,UAB_metadata<span class="sc">$</span>sample_name] <span class="sc">%&gt;%</span> magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">rownames</span>(UAB_metadata))</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>UAB_metadata <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;subject_metadata&quot;</span>))</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">rownames</span>(UAB_metadata) <span class="ot">&lt;-</span> UAB_metadata<span class="sc">$</span>SubjectID</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="co"># get Metaphlan relative abundances</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>UAB_metaphlan_relab <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;metaphlan_rel_ab&quot;</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>  <span class="fu">wrangle_metaphlan</span>(<span class="st">&quot;Species&quot;</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="co"># get Metaphlan estimated counts</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>UAB_metaphlan_counts <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;metaphlan_counts&quot;</span>) <span class="sc">%&gt;%</span> <span class="fu">wrangle_metaphlan</span>(<span class="st">&quot;Species&quot;</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>UAB_metaphlan_counts<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_metaphlan_counts<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
 <span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a></span>
-<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a><span class="co"># get Metaphlan estimated counts</span></span>
-<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a>UAB_metaphlan_counts <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;metaphlan_counts&quot;</span>) <span class="sc">%&gt;%</span> <span class="fu">wrangle_metaphlan</span>(<span class="st">&quot;Species&quot;</span>)</span>
-<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a>UAB_metaphlan_counts<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_metaphlan_counts<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
-<span id="cb1-16"><a href="#cb1-16" tabindex="-1"></a>UAB_metaphlan_counts<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_counts<span class="sc">$</span>profiles[,UAB_metadata<span class="sc">$</span>sample_name] <span class="sc">%&gt;%</span> magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">rownames</span>(UAB_metadata))</span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a><span class="co"># get HUMAnN KO tables</span></span>
+<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a>UAB_humann_KO <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;humann_KO_group_counts&quot;</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a>  <span class="fu">wrangle_humann</span>(<span class="at">input_type =</span> <span class="st">&quot;ko&quot;</span>)</span>
+<span id="cb1-16"><a href="#cb1-16" tabindex="-1"></a>UAB_humann_KO<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_humann_KO<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
 <span id="cb1-17"><a href="#cb1-17" tabindex="-1"></a></span>
-<span id="cb1-18"><a href="#cb1-18" tabindex="-1"></a><span class="co"># get HUMAnN KO tables</span></span>
-<span id="cb1-19"><a href="#cb1-19" tabindex="-1"></a>UAB_humann_KO <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;humann_KO_group_counts&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-20"><a href="#cb1-20" tabindex="-1"></a>  <span class="fu">wrangle_humann</span>(<span class="at">input_type =</span> <span class="st">&quot;ko&quot;</span>)</span>
-<span id="cb1-21"><a href="#cb1-21" tabindex="-1"></a>UAB_humann_KO<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_humann_KO<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
-<span id="cb1-22"><a href="#cb1-22" tabindex="-1"></a>UAB_humann_KO<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_KO<span class="sc">$</span>profiles[, UAB_metadata<span class="sc">$</span>sample_name] <span class="sc">%&gt;%</span> magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">rownames</span>(UAB_metadata))</span>
+<span id="cb1-18"><a href="#cb1-18" tabindex="-1"></a><span class="co"># get HUMAnN Pathway tables</span></span>
+<span id="cb1-19"><a href="#cb1-19" tabindex="-1"></a>UAB_humann_pathways <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;humann_pathway_counts&quot;</span>) <span class="sc">%&gt;%</span> <span class="fu">wrangle_humann</span>(<span class="at">input_type =</span> <span class="st">&quot;pathways&quot;</span>)</span>
+<span id="cb1-20"><a href="#cb1-20" tabindex="-1"></a>UAB_humann_pathways<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_humann_pathways<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
+<span id="cb1-21"><a href="#cb1-21" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" tabindex="-1"></a><span class="co"># find samples intersection across experiments and metadata</span></span>
 <span id="cb1-23"><a href="#cb1-23" tabindex="-1"></a></span>
-<span id="cb1-24"><a href="#cb1-24" tabindex="-1"></a><span class="co"># get HUMAnN Pathway tables</span></span>
-<span id="cb1-25"><a href="#cb1-25" tabindex="-1"></a>UAB_humann_pathways <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;humann_pathway_counts&quot;</span>) <span class="sc">%&gt;%</span> <span class="fu">wrangle_humann</span>(<span class="at">input_type =</span> <span class="st">&quot;pathways&quot;</span>)</span>
-<span id="cb1-26"><a href="#cb1-26" tabindex="-1"></a>UAB_humann_pathways<span class="sc">$</span>profiles <span class="ot">&lt;-</span> <span class="fu">round</span>(UAB_humann_pathways<span class="sc">$</span>profiles, <span class="dv">0</span>)</span>
-<span id="cb1-27"><a href="#cb1-27" tabindex="-1"></a>UAB_humann_pathways<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_pathways<span class="sc">$</span>profiles[, UAB_metadata<span class="sc">$</span>sample_name] <span class="sc">%&gt;%</span> magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">rownames</span>(UAB_metadata))</span>
-<span id="cb1-28"><a href="#cb1-28" tabindex="-1"></a></span>
-<span id="cb1-29"><a href="#cb1-29" tabindex="-1"></a><span class="co"># find samples intersection across experiments and metadata</span></span>
-<span id="cb1-30"><a href="#cb1-30" tabindex="-1"></a></span>
-<span id="cb1-31"><a href="#cb1-31" tabindex="-1"></a>samples_per_data_piece <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb1-32"><a href="#cb1-32" tabindex="-1"></a>  <span class="st">&quot;Metaphlan (Relative Abundance)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_metaphlan_relab<span class="sc">$</span>profiles),</span>
-<span id="cb1-33"><a href="#cb1-33" tabindex="-1"></a>  <span class="st">&quot;Metaphlan (Counts)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_metaphlan_counts<span class="sc">$</span>profiles),</span>
-<span id="cb1-34"><a href="#cb1-34" tabindex="-1"></a>  <span class="st">&quot;HUMAnN3 (Kegg Orthology)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_humann_KO<span class="sc">$</span>profiles),</span>
-<span id="cb1-35"><a href="#cb1-35" tabindex="-1"></a>  <span class="st">&quot;HUMAnN3 (MetaCyc Pathways)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_humann_pathways<span class="sc">$</span>profiles),</span>
-<span id="cb1-36"><a href="#cb1-36" tabindex="-1"></a>  <span class="st">&quot;Metadata&quot;</span> <span class="ot">=</span> <span class="fu">rownames</span>(UAB_metadata)</span>
-<span id="cb1-37"><a href="#cb1-37" tabindex="-1"></a>  )</span>
-<span id="cb1-38"><a href="#cb1-38" tabindex="-1"></a></span>
-<span id="cb1-39"><a href="#cb1-39" tabindex="-1"></a>samples_intersect <span class="ot">&lt;-</span> <span class="fu">reduce</span>(samples_per_data_piece, intersect)</span>
-<span id="cb1-40"><a href="#cb1-40" tabindex="-1"></a></span>
-<span id="cb1-41"><a href="#cb1-41" tabindex="-1"></a><span class="co"># load samples to exclude (not necessary in DoD, but necessary in UAB and UAB)</span></span>
-<span id="cb1-42"><a href="#cb1-42" tabindex="-1"></a>samples_to_exclude <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/exclusions NGRC UAB_ZW_HP.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;R-friendly list&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-43"><a href="#cb1-43" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">sample_name =</span> <span class="fu">make.names</span>(sample_name))</span>
-<span id="cb1-44"><a href="#cb1-44" tabindex="-1"></a></span>
-<span id="cb1-45"><a href="#cb1-45" tabindex="-1"></a>samples_intersect_after_exclusion <span class="ot">&lt;-</span> samples_intersect[<span class="sc">!</span>(samples_intersect <span class="sc">%in%</span> samples_to_exclude<span class="sc">$</span>sample_name)]</span>
+<span id="cb1-24"><a href="#cb1-24" tabindex="-1"></a>samples_per_data_piece <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb1-25"><a href="#cb1-25" tabindex="-1"></a>  <span class="st">&quot;Metaphlan (Relative Abundance)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_metaphlan_relab<span class="sc">$</span>profiles),</span>
+<span id="cb1-26"><a href="#cb1-26" tabindex="-1"></a>  <span class="st">&quot;Metaphlan (Counts)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_metaphlan_counts<span class="sc">$</span>profiles),</span>
+<span id="cb1-27"><a href="#cb1-27" tabindex="-1"></a>  <span class="st">&quot;HUMAnN3 (Kegg Orthology)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_humann_KO<span class="sc">$</span>profiles),</span>
+<span id="cb1-28"><a href="#cb1-28" tabindex="-1"></a>  <span class="st">&quot;HUMAnN3 (MetaCyc Pathways)&quot;</span> <span class="ot">=</span> <span class="fu">colnames</span>(UAB_humann_pathways<span class="sc">$</span>profiles),</span>
+<span id="cb1-29"><a href="#cb1-29" tabindex="-1"></a>  <span class="st">&quot;Metadata&quot;</span> <span class="ot">=</span> <span class="fu">rownames</span>(UAB_metadata)</span>
+<span id="cb1-30"><a href="#cb1-30" tabindex="-1"></a>  )</span>
+<span id="cb1-31"><a href="#cb1-31" tabindex="-1"></a></span>
+<span id="cb1-32"><a href="#cb1-32" tabindex="-1"></a>samples_intersect <span class="ot">&lt;-</span> <span class="fu">reduce</span>(samples_per_data_piece, intersect)</span>
+<span id="cb1-33"><a href="#cb1-33" tabindex="-1"></a></span>
+<span id="cb1-34"><a href="#cb1-34" tabindex="-1"></a><span class="co"># load samples to exclude (not necessary in DoD, but necessary in UAB and UAB)</span></span>
+<span id="cb1-35"><a href="#cb1-35" tabindex="-1"></a>samples_to_exclude.df <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/mapping_and_exclusion_lists/exclusions NGRC UAB_ZW_HP.xlsx&quot;</span>, <span class="at">sheet =</span> <span class="st">&quot;R-friendly list&quot;</span>)</span>
+<span id="cb1-36"><a href="#cb1-36" tabindex="-1"></a></span>
+<span id="cb1-37"><a href="#cb1-37" tabindex="-1"></a><span class="co">#samples_intersect_after_exclusion &lt;- samples_intersect[!(samples_intersect %in% samples_to_exclude.df$sample_name)]</span></span>
+<span id="cb1-38"><a href="#cb1-38" tabindex="-1"></a>samples_intersect_after_exclusion <span class="ot">&lt;-</span> samples_intersect</span>
+<span id="cb1-39"><a href="#cb1-39" tabindex="-1"></a></span>
+<span id="cb1-40"><a href="#cb1-40" tabindex="-1"></a><span class="co"># reorder colnames so they all match the metadata</span></span>
+<span id="cb1-41"><a href="#cb1-41" tabindex="-1"></a></span>
+<span id="cb1-42"><a href="#cb1-42" tabindex="-1"></a>UAB_metaphlan_relab<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_relab<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
+<span id="cb1-43"><a href="#cb1-43" tabindex="-1"></a>UAB_metaphlan_counts<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_counts<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
+<span id="cb1-44"><a href="#cb1-44" tabindex="-1"></a>UAB_humann_KO<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_KO<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
+<span id="cb1-45"><a href="#cb1-45" tabindex="-1"></a>UAB_humann_pathways<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_pathways<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
 <span id="cb1-46"><a href="#cb1-46" tabindex="-1"></a></span>
-<span id="cb1-47"><a href="#cb1-47" tabindex="-1"></a><span class="co"># reorder colnames so they all match the metadata</span></span>
-<span id="cb1-48"><a href="#cb1-48" tabindex="-1"></a></span>
-<span id="cb1-49"><a href="#cb1-49" tabindex="-1"></a>UAB_metaphlan_relab<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_relab<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
-<span id="cb1-50"><a href="#cb1-50" tabindex="-1"></a>UAB_metaphlan_counts<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_metaphlan_counts<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
-<span id="cb1-51"><a href="#cb1-51" tabindex="-1"></a>UAB_humann_KO<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_KO<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
-<span id="cb1-52"><a href="#cb1-52" tabindex="-1"></a>UAB_humann_pathways<span class="sc">$</span>profiles <span class="ot">&lt;-</span> UAB_humann_pathways<span class="sc">$</span>profiles[, samples_intersect_after_exclusion]</span>
-<span id="cb1-53"><a href="#cb1-53" tabindex="-1"></a></span>
-<span id="cb1-54"><a href="#cb1-54" tabindex="-1"></a>sample_metadata.df <span class="ot">&lt;-</span> UAB_metadata[samples_intersect_after_exclusion,] <span class="sc">%&gt;%</span> </span>
-<span id="cb1-55"><a href="#cb1-55" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">seqs_scaled =</span> <span class="fu">scale</span>(total_sequences))</span></code></pre></div>
+<span id="cb1-47"><a href="#cb1-47" tabindex="-1"></a>sample_metadata.df <span class="ot">&lt;-</span> UAB_metadata[samples_intersect_after_exclusion,] <span class="sc">%&gt;%</span> </span>
+<span id="cb1-48"><a href="#cb1-48" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">seqs_scaled =</span> <span class="fu">scale</span>(total_sequences))</span>
+<span id="cb1-49"><a href="#cb1-49" tabindex="-1"></a></span>
+<span id="cb1-50"><a href="#cb1-50" tabindex="-1"></a>samples_to_exclude.df <span class="sc">%&gt;%</span> </span>
+<span id="cb1-51"><a href="#cb1-51" tabindex="-1"></a>  <span class="fu">filter</span>(sample_name <span class="sc">%in%</span> samples_intersect) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-52"><a href="#cb1-52" tabindex="-1"></a>  <span class="fu">kbl</span>(<span class="at">caption =</span> <span class="st">&quot;List of samples excluded from the UAB dataset, along with reason for exclusion.&quot;</span>)</span></code></pre></div>
+<table>
+<caption>
+<span id="tab:unnamed-chunk-3">Table 1.1: </span>List of samples excluded from the UAB dataset, along with reason for exclusion.
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+sample_name
+</th>
+<th style="text-align:left;">
+dataset
+</th>
+<th style="text-align:left;">
+reason
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+</tr>
+</tbody>
+</table>
 <div id="prepare-genotype-data" class="section level2" number="1.1">
 <h2><span class="header-section-number">1.1</span> Prepare genotype data</h2>
 <p>Both dosages and hardcalls.</p>
@@ -3187,140 +3205,98 @@ OTHER
 </tr>
 </tbody>
 </table>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># manipulate genetics data a bit, to make it more usable in the SummarizedExperiment</span></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co"># context</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>variant_metadata_cols <span class="ot">&lt;-</span> <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">which</span>(<span class="fu">grepl</span>(<span class="st">&quot;INFO&quot;</span>, <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df))))]</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_dosages_in_TOPMed.df</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>samples_intersect_genetics <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(tmp), <span class="fu">rownames</span>(sample_metadata.df))</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>metadata_cols_genetics <span class="ot">&lt;-</span> <span class="fu">colnames</span>(tmp)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">grep</span>(<span class="st">&quot;INFO_&quot;</span>, <span class="fu">colnames</span>(tmp)))]</span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>variants_made_unique <span class="ot">&lt;-</span> <span class="fu">make.unique</span>(tmp<span class="sc">$</span>RSID)</span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a>genetics_matrix_dosages <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_hardcalls_in_TOPMed.df</span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a></span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a>genetics_matrix_hardcalls <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
+<span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a></span>
+<span id="cb3-19"><a href="#cb3-19" tabindex="-1"></a>genetics_metadata <span class="ot">&lt;-</span> tmp[variants_made_unique, metadata_cols_genetics]</span>
+<span id="cb3-20"><a href="#cb3-20" tabindex="-1"></a>sample_metadata_genetics <span class="ot">&lt;-</span> sample_metadata.df[samples_intersect_genetics,]</span></code></pre></div>
 </div>
-<div id="continue-from-here---find-which-metagenomics-samples-also-have-genetic-data" class="section level2" number="1.2">
-<h2><span class="header-section-number">1.2</span> Continue from here - Find which metagenomics samples also have genetic data</h2>
-<p>For UAB, many samples are named differently. For this reason, we need one extra
-layer of mapping:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>mapping_names_UAB <span class="ot">&lt;-</span> readxl<span class="sc">::</span><span class="fu">read_xlsx</span>(<span class="st">&quot;/data/project/payami-lab/payamilab/0_Source_Data/NGRC_Hamza_GWAS_microbiome_genotype_ID_map.xlsx&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>  <span class="fu">set_names</span>(<span class="fu">c</span>(<span class="st">&quot;microbiome_id&quot;</span>, <span class="st">&quot;genotype_id&quot;</span>))</span>
-<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a></span>
-<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="fu">as_tibble</span>(mapping_names_UAB)</span></code></pre></div>
-<pre><code>## # A tibble: 244 × 2
-##    microbiome_id genotype_id                      
-##    &lt;chr&gt;         &lt;chr&gt;                            
-##  1 EC0004201     WG1003245-DNAG11-9367@1020531086 
-##  2 EC0013201     WG1003256-DNAF12-11579@1020531094
-##  3 EC0037201     WG1003232-DNAD03-11602@1020531097
-##  4 EC0044201     WG1003252-DNAC04-11609@1020531074
-##  5 EC0046201     WG1003222-DNAC02-11634@1020531098
-##  6 EC0051201     WG1003216-DNAB03-11655@1020531122
-##  7 EC0053201     WG1003236-DNAB10-11657@1020531129
-##  8 EC0067201     WG1003229-DNAD02-12489@1020531147
-##  9 EC0073201     WG1003218-DNAC11-12495@1020531124
-## 10 EC0090201     WG1003220-DNAA03-12910@1020529568
-## # ℹ 234 more rows</code></pre>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>variant_metadata_cols <span class="ot">&lt;-</span> <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">which</span>(<span class="fu">grepl</span>(<span class="st">&quot;INFO&quot;</span>, <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df))))]</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">names</span>(variant_metadata_cols) <span class="ot">&lt;-</span> variant_metadata_cols</span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
-<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>sampleIDs_remapped <span class="ot">&lt;-</span> <span class="fu">sapply</span>(</span>
-<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>  <span class="fu">rownames</span>(sample_metadata.df), </span>
-<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>  <span class="cf">function</span>(x) </span>
-<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>    <span class="fu">ifelse</span>(purrr<span class="sc">::</span><span class="fu">is_empty</span>(mapping_names_UAB<span class="sc">$</span>genotype_id[<span class="fu">grep</span>(x, mapping_names_UAB<span class="sc">$</span>microbiome_id)]),</span>
-<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>           x, mapping_names_UAB<span class="sc">$</span>genotype_id[<span class="fu">grep</span>(x, mapping_names_UAB<span class="sc">$</span>microbiome_id)]), </span>
-<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>  <span class="at">simplify =</span> <span class="cn">FALSE</span>, </span>
-<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>  <span class="at">USE.NAMES =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a></span>
-<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>sampleIDs_TOPMed_remapped <span class="ot">&lt;-</span> <span class="fu">lapply</span>(sampleIDs_remapped, <span class="cf">function</span>(x) <span class="fu">grep</span>(x, <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df), <span class="at">value =</span> <span class="cn">TRUE</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>  <span class="fu">unlist</span>()</span>
-<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a></span>
-<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a>newColnames <span class="ot">&lt;-</span> <span class="fu">c</span>(variant_metadata_cols, sampleIDs_TOPMed_remapped)</span>
-<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a></span>
-<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a>gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df <span class="ot">&lt;-</span> <span class="fu">select</span>(gwasCatalog_variants_dosages_in_TOPMed.df, <span class="fu">all_of</span>(newColnames))</span>
-<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a>gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df <span class="ot">&lt;-</span> <span class="fu">select</span>(gwasCatalog_variants_hardcalls_in_TOPMed.df, <span class="fu">all_of</span>(newColnames))</span></code></pre></div>
-<p>At this step, we have generated a set of genotypes to test against the microbiome
-as found in the GWAS catalog and our genotypes. It is a <code>samples x genotypes</code> matrix.</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># manipulate genetics data a bit, to make it more usable in the SummarizedExperiment</span></span>
-<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co"># context</span></span>
-<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a></span>
-<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df</span>
-<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>samples_intersect_genetics <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(tmp), <span class="fu">rownames</span>(sample_metadata.df))</span>
-<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>metadata_cols_genetics <span class="ot">&lt;-</span> <span class="fu">colnames</span>(tmp)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">grep</span>(<span class="st">&quot;INFO_&quot;</span>, <span class="fu">colnames</span>(tmp)))]</span>
-<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a>variants_made_unique <span class="ot">&lt;-</span> <span class="fu">make.unique</span>(tmp<span class="sc">$</span>RSID)</span>
-<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
-<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a></span>
-<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>genetics_matrix_dosages <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
-<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a></span>
-<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df</span>
-<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
-<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a></span>
-<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a>genetics_matrix_hardcalls <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
-<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a></span>
-<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a></span>
-<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a>genetics_metadata <span class="ot">&lt;-</span> tmp[variants_made_unique, metadata_cols_genetics]</span>
-<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a>sample_metadata_genetics <span class="ot">&lt;-</span> sample_metadata.df[samples_intersect_genetics,]</span></code></pre></div>
-</div>
-<div id="generate-a-multiassayexperiment-object-with-all-data-together" class="section level2" number="1.3">
-<h2><span class="header-section-number">1.3</span> Generate a <code>MultiAssayExperiment</code> object with all data together</h2>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">library</span>(MultiAssayExperiment, <span class="at">quietly =</span> <span class="cn">TRUE</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a></span>
-<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>summarizedExperiments.list <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">genotypes_dosages.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;genotypes_dosages&quot;</span> <span class="ot">=</span> genetics_matrix_dosages, <span class="st">&quot;genotypes_hardcalls&quot;</span> <span class="ot">=</span> genetics_matrix_hardcalls),</span>
-<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>    <span class="at">rowData =</span> genetics_metadata,</span>
-<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata_genetics</span>
-<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>  ),</span>
-<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>  </span>
-<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>  <span class="at">genotypes_hardcalls.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;genotypes_hardcalls&quot;</span> <span class="ot">=</span> genetics_matrix_hardcalls),</span>
-<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a>    <span class="at">rowData =</span> genetics_metadata,</span>
-<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata_genetics</span>
-<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a>  ), </span>
-<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a>  </span>
-<span id="cb7-16"><a href="#cb7-16" tabindex="-1"></a>  <span class="at">metaphlan_RelAbund.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-17"><a href="#cb7-17" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;metaphlan_RelAbund&quot;</span> <span class="ot">=</span> UAB_metaphlan_relab<span class="sc">$</span>profiles),</span>
-<span id="cb7-18"><a href="#cb7-18" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_metaphlan_relab<span class="sc">$</span>taxonomies,</span>
-<span id="cb7-19"><a href="#cb7-19" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
-<span id="cb7-20"><a href="#cb7-20" tabindex="-1"></a>  ),</span>
-<span id="cb7-21"><a href="#cb7-21" tabindex="-1"></a>  </span>
-<span id="cb7-22"><a href="#cb7-22" tabindex="-1"></a>  <span class="at">metaphlan_Counts.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-23"><a href="#cb7-23" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;metaphlan_Counts&quot;</span> <span class="ot">=</span> UAB_metaphlan_counts<span class="sc">$</span>profiles),</span>
-<span id="cb7-24"><a href="#cb7-24" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_metaphlan_counts<span class="sc">$</span>taxonomies,</span>
-<span id="cb7-25"><a href="#cb7-25" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
-<span id="cb7-26"><a href="#cb7-26" tabindex="-1"></a>  ),</span>
-<span id="cb7-27"><a href="#cb7-27" tabindex="-1"></a>  </span>
-<span id="cb7-28"><a href="#cb7-28" tabindex="-1"></a>  <span class="at">humann_KO.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-29"><a href="#cb7-29" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;humann_KO&quot;</span> <span class="ot">=</span> UAB_humann_KO<span class="sc">$</span>profiles),</span>
-<span id="cb7-30"><a href="#cb7-30" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_humann_KO<span class="sc">$</span>description,</span>
-<span id="cb7-31"><a href="#cb7-31" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
-<span id="cb7-32"><a href="#cb7-32" tabindex="-1"></a>  ),</span>
-<span id="cb7-33"><a href="#cb7-33" tabindex="-1"></a>  </span>
-<span id="cb7-34"><a href="#cb7-34" tabindex="-1"></a>  <span class="at">humann_pathways.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
-<span id="cb7-35"><a href="#cb7-35" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;humann_pathways&quot;</span> <span class="ot">=</span> UAB_humann_pathways<span class="sc">$</span>profiles),</span>
-<span id="cb7-36"><a href="#cb7-36" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_humann_pathways<span class="sc">$</span>description,</span>
-<span id="cb7-37"><a href="#cb7-37" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
-<span id="cb7-38"><a href="#cb7-38" tabindex="-1"></a>  )</span>
-<span id="cb7-39"><a href="#cb7-39" tabindex="-1"></a>)</span>
-<span id="cb7-40"><a href="#cb7-40" tabindex="-1"></a></span>
-<span id="cb7-41"><a href="#cb7-41" tabindex="-1"></a>assays_vec <span class="ot">&lt;-</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-42"><a href="#cb7-42" tabindex="-1"></a>  <span class="fu">lapply</span>(length)</span>
-<span id="cb7-43"><a href="#cb7-43" tabindex="-1"></a></span>
-<span id="cb7-44"><a href="#cb7-44" tabindex="-1"></a>assays_vec <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="fu">names</span>(assays_vec), <span class="cf">function</span>(x) <span class="fu">rep</span>(x, assays_vec[[x]])) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-45"><a href="#cb7-45" tabindex="-1"></a>  purrr<span class="sc">::</span><span class="fu">reduce</span>(c) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-46"><a href="#cb7-46" tabindex="-1"></a>  <span class="fu">factor</span>(<span class="at">levels =</span> <span class="fu">names</span>(assays_vec))</span>
-<span id="cb7-47"><a href="#cb7-47" tabindex="-1"></a></span>
-<span id="cb7-48"><a href="#cb7-48" tabindex="-1"></a>assays_sample_map <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
-<span id="cb7-49"><a href="#cb7-49" tabindex="-1"></a>  <span class="at">assay =</span> assays_vec,</span>
-<span id="cb7-50"><a href="#cb7-50" tabindex="-1"></a>  <span class="at">primary =</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> purrr<span class="sc">::</span><span class="fu">reduce</span>(c),</span>
-<span id="cb7-51"><a href="#cb7-51" tabindex="-1"></a>  <span class="at">colname =</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> purrr<span class="sc">::</span><span class="fu">reduce</span>(c)</span>
-<span id="cb7-52"><a href="#cb7-52" tabindex="-1"></a>)</span>
-<span id="cb7-53"><a href="#cb7-53" tabindex="-1"></a></span>
-<span id="cb7-54"><a href="#cb7-54" tabindex="-1"></a>UAB_data.mae <span class="ot">&lt;-</span> <span class="fu">MultiAssayExperiment</span>(</span>
-<span id="cb7-55"><a href="#cb7-55" tabindex="-1"></a>  <span class="at">experiments =</span> summarizedExperiments.list,</span>
-<span id="cb7-56"><a href="#cb7-56" tabindex="-1"></a>  <span class="at">sampleMap =</span> assays_sample_map,</span>
-<span id="cb7-57"><a href="#cb7-57" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata.df</span>
-<span id="cb7-58"><a href="#cb7-58" tabindex="-1"></a>)</span></code></pre></div>
-<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">save</span>(UAB_data.mae, <span class="at">file =</span> <span class="st">&quot;UAB_data.mae.RData&quot;</span>)</span></code></pre></div>
+<div id="generate-a-multiassayexperiment-object-with-all-data-together" class="section level2" number="1.2">
+<h2><span class="header-section-number">1.2</span> Generate a <code>MultiAssayExperiment</code> object with all data together</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">library</span>(MultiAssayExperiment, <span class="at">quietly =</span> <span class="cn">TRUE</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>summarizedExperiments.list <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">genotypes_dosages.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;genotypes_dosages&quot;</span> <span class="ot">=</span> genetics_matrix_dosages, <span class="st">&quot;genotypes_hardcalls&quot;</span> <span class="ot">=</span> genetics_matrix_hardcalls),</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>    <span class="at">rowData =</span> genetics_metadata,</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata_genetics</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  ),</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  </span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="at">genotypes_hardcalls.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;genotypes_hardcalls&quot;</span> <span class="ot">=</span> genetics_matrix_hardcalls),</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>    <span class="at">rowData =</span> genetics_metadata,</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata_genetics</span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a>  ), </span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a>  </span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a>  <span class="at">metaphlan_RelAbund.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;metaphlan_RelAbund&quot;</span> <span class="ot">=</span> UAB_metaphlan_relab<span class="sc">$</span>profiles),</span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_metaphlan_relab<span class="sc">$</span>taxonomies,</span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a>  ),</span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a>  </span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a>  <span class="at">metaphlan_Counts.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;metaphlan_Counts&quot;</span> <span class="ot">=</span> UAB_metaphlan_counts<span class="sc">$</span>profiles),</span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_metaphlan_counts<span class="sc">$</span>taxonomies,</span>
+<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
+<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a>  ),</span>
+<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a>  </span>
+<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a>  <span class="at">humann_KO.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;humann_KO&quot;</span> <span class="ot">=</span> UAB_humann_KO<span class="sc">$</span>profiles),</span>
+<span id="cb4-30"><a href="#cb4-30" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_humann_KO<span class="sc">$</span>description,</span>
+<span id="cb4-31"><a href="#cb4-31" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
+<span id="cb4-32"><a href="#cb4-32" tabindex="-1"></a>  ),</span>
+<span id="cb4-33"><a href="#cb4-33" tabindex="-1"></a>  </span>
+<span id="cb4-34"><a href="#cb4-34" tabindex="-1"></a>  <span class="at">humann_pathways.se =</span> <span class="fu">SummarizedExperiment</span>(</span>
+<span id="cb4-35"><a href="#cb4-35" tabindex="-1"></a>    <span class="at">assays =</span> <span class="fu">list</span>(<span class="st">&quot;humann_pathways&quot;</span> <span class="ot">=</span> UAB_humann_pathways<span class="sc">$</span>profiles),</span>
+<span id="cb4-36"><a href="#cb4-36" tabindex="-1"></a>    <span class="at">rowData =</span>  UAB_humann_pathways<span class="sc">$</span>description,</span>
+<span id="cb4-37"><a href="#cb4-37" tabindex="-1"></a>    <span class="at">colData =</span> sample_metadata.df</span>
+<span id="cb4-38"><a href="#cb4-38" tabindex="-1"></a>  )</span>
+<span id="cb4-39"><a href="#cb4-39" tabindex="-1"></a>)</span>
+<span id="cb4-40"><a href="#cb4-40" tabindex="-1"></a></span>
+<span id="cb4-41"><a href="#cb4-41" tabindex="-1"></a>assays_vec <span class="ot">&lt;-</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> </span>
+<span id="cb4-42"><a href="#cb4-42" tabindex="-1"></a>  <span class="fu">lapply</span>(length)</span>
+<span id="cb4-43"><a href="#cb4-43" tabindex="-1"></a></span>
+<span id="cb4-44"><a href="#cb4-44" tabindex="-1"></a>assays_vec <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="fu">names</span>(assays_vec), <span class="cf">function</span>(x) <span class="fu">rep</span>(x, assays_vec[[x]])) <span class="sc">%&gt;%</span> </span>
+<span id="cb4-45"><a href="#cb4-45" tabindex="-1"></a>  purrr<span class="sc">::</span><span class="fu">reduce</span>(c) <span class="sc">%&gt;%</span> </span>
+<span id="cb4-46"><a href="#cb4-46" tabindex="-1"></a>  <span class="fu">factor</span>(<span class="at">levels =</span> <span class="fu">names</span>(assays_vec))</span>
+<span id="cb4-47"><a href="#cb4-47" tabindex="-1"></a></span>
+<span id="cb4-48"><a href="#cb4-48" tabindex="-1"></a>assays_sample_map <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb4-49"><a href="#cb4-49" tabindex="-1"></a>  <span class="at">assay =</span> assays_vec,</span>
+<span id="cb4-50"><a href="#cb4-50" tabindex="-1"></a>  <span class="at">primary =</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> purrr<span class="sc">::</span><span class="fu">reduce</span>(c),</span>
+<span id="cb4-51"><a href="#cb4-51" tabindex="-1"></a>  <span class="at">colname =</span> <span class="fu">lapply</span>(summarizedExperiments.list, colnames) <span class="sc">%&gt;%</span> purrr<span class="sc">::</span><span class="fu">reduce</span>(c)</span>
+<span id="cb4-52"><a href="#cb4-52" tabindex="-1"></a>)</span>
+<span id="cb4-53"><a href="#cb4-53" tabindex="-1"></a></span>
+<span id="cb4-54"><a href="#cb4-54" tabindex="-1"></a>UAB_data.mae <span class="ot">&lt;-</span> <span class="fu">MultiAssayExperiment</span>(</span>
+<span id="cb4-55"><a href="#cb4-55" tabindex="-1"></a>  <span class="at">experiments =</span> summarizedExperiments.list,</span>
+<span id="cb4-56"><a href="#cb4-56" tabindex="-1"></a>  <span class="at">sampleMap =</span> assays_sample_map,</span>
+<span id="cb4-57"><a href="#cb4-57" tabindex="-1"></a>  <span class="at">colData =</span> sample_metadata.df</span>
+<span id="cb4-58"><a href="#cb4-58" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">save</span>(UAB_data.mae, <span class="at">file =</span> <span class="st">&quot;UAB_data.mae.RData&quot;</span>)</span></code></pre></div>
 </div>
 </div>
 <div id="final-data-object-generated---a-quick-look" class="section level1" number="2">
 <h1><span class="header-section-number">2</span> Final data object generated - a quick look</h1>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>UAB_data.mae</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>UAB_data.mae</span></code></pre></div>
 <pre><code>## A MultiAssayExperiment object of 6 listed
 ##  experiments with user-defined names and respective classes.
 ##  Containing an ExperimentList class object of length 6:
-##  [1] genotypes_dosages.se: SummarizedExperiment with 315 rows and 465 columns
-##  [2] genotypes_hardcalls.se: SummarizedExperiment with 315 rows and 465 columns
+##  [1] genotypes_dosages.se: SummarizedExperiment with 315 rows and 468 columns
+##  [2] genotypes_hardcalls.se: SummarizedExperiment with 315 rows and 468 columns
 ##  [3] metaphlan_RelAbund.se: SummarizedExperiment with 1056 rows and 487 columns
 ##  [4] metaphlan_Counts.se: SummarizedExperiment with 1057 rows and 487 columns
 ##  [5] humann_KO.se: SummarizedExperiment with 10278 rows and 487 columns
@@ -3338,17 +3314,17 @@ as found in the GWAS catalog and our genotypes. It is a <code>samples x genotype
 <h1><span class="header-section-number">3</span> Samples not fully retrieved</h1>
 <div id="samples-excluded-at-each-step" class="section level2" number="3.1">
 <h2><span class="header-section-number">3.1</span> Samples excluded at each step</h2>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">cbind</span>(</span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">sapply</span>(samples_per_data_piece, length),</span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect), <span class="fu">length</span>(samples_per_data_piece)),</span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_after_exclusion), <span class="fu">length</span>(samples_per_data_piece)),</span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_genetics), <span class="fu">length</span>(samples_per_data_piece))</span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">c</span>(<span class="st">&quot;Unifiltered&quot;</span>, <span class="st">&quot;With Microbiome&quot;</span>, <span class="st">&quot;After sample exclusion&quot;</span>, <span class="st">&quot;Also with Genetic data&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>  <span class="fu">kbl</span>(<span class="at">caption =</span> <span class="st">&quot;Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">cbind</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="fu">sapply</span>(samples_per_data_piece, length),</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect), <span class="fu">length</span>(samples_per_data_piece)),</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_after_exclusion), <span class="fu">length</span>(samples_per_data_piece)),</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="fu">rep</span>(<span class="fu">length</span>(samples_intersect_genetics), <span class="fu">length</span>(samples_per_data_piece))</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>  magrittr<span class="sc">::</span><span class="fu">set_colnames</span>(<span class="fu">c</span>(<span class="st">&quot;Unifiltered&quot;</span>, <span class="st">&quot;With Microbiome&quot;</span>, <span class="st">&quot;After sample exclusion&quot;</span>, <span class="st">&quot;Also with Genetic data&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>  <span class="fu">kbl</span>(<span class="at">caption =</span> <span class="st">&quot;Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)&quot;</span>)</span></code></pre></div>
 <table>
 <caption>
-<span id="tab:unnamed-chunk-9">Table 3.1: </span>Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)
+<span id="tab:unnamed-chunk-7">Table 3.1: </span>Number of samples in raw input data (Unfiltered) and after finding the samples in common (Intersection)
 </caption>
 <thead>
 <tr>
@@ -3374,16 +3350,16 @@ Also with Genetic data
 Metaphlan (Relative Abundance)
 </td>
 <td style="text-align:right;">
-498
-</td>
-<td style="text-align:right;">
-498
+487
 </td>
 <td style="text-align:right;">
 487
 </td>
 <td style="text-align:right;">
-465
+487
+</td>
+<td style="text-align:right;">
+468
 </td>
 </tr>
 <tr>
@@ -3391,16 +3367,16 @@ Metaphlan (Relative Abundance)
 Metaphlan (Counts)
 </td>
 <td style="text-align:right;">
-498
-</td>
-<td style="text-align:right;">
-498
+487
 </td>
 <td style="text-align:right;">
 487
 </td>
 <td style="text-align:right;">
-465
+487
+</td>
+<td style="text-align:right;">
+468
 </td>
 </tr>
 <tr>
@@ -3408,16 +3384,16 @@ Metaphlan (Counts)
 HUMAnN3 (Kegg Orthology)
 </td>
 <td style="text-align:right;">
-498
-</td>
-<td style="text-align:right;">
-498
+487
 </td>
 <td style="text-align:right;">
 487
 </td>
 <td style="text-align:right;">
-465
+487
+</td>
+<td style="text-align:right;">
+468
 </td>
 </tr>
 <tr>
@@ -3425,16 +3401,16 @@ HUMAnN3 (Kegg Orthology)
 HUMAnN3 (MetaCyc Pathways)
 </td>
 <td style="text-align:right;">
-498
-</td>
-<td style="text-align:right;">
-498
+487
 </td>
 <td style="text-align:right;">
 487
 </td>
 <td style="text-align:right;">
-465
+487
+</td>
+<td style="text-align:right;">
+468
 </td>
 </tr>
 <tr>
@@ -3442,16 +3418,16 @@ HUMAnN3 (MetaCyc Pathways)
 Metadata
 </td>
 <td style="text-align:right;">
-498
-</td>
-<td style="text-align:right;">
-498
+497
 </td>
 <td style="text-align:right;">
 487
 </td>
 <td style="text-align:right;">
-465
+487
+</td>
+<td style="text-align:right;">
+468
 </td>
 </tr>
 </tbody>
@@ -3459,15 +3435,15 @@ Metadata
 </div>
 <div id="microbiome-samples-not-retrieved-in-genetic-data" class="section level2" number="3.2">
 <h2><span class="header-section-number">3.2</span> Microbiome samples not retrieved in Genetic data</h2>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]])[<span class="sc">!</span>(<span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]]) <span class="sc">%in%</span> <span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;genotypes_dosages.se&quot;</span>]]))]</span></code></pre></div>
-<pre><code>##  [1] &quot;SC0044&quot; &quot;SC0068&quot; &quot;SC0103&quot; &quot;SC0119&quot; &quot;SC0145&quot; &quot;SC0463&quot; &quot;SC0541&quot; &quot;SC0548&quot;
-##  [9] &quot;SC0553&quot; &quot;SC0554&quot; &quot;SC0630&quot; &quot;SP0063&quot; &quot;SP0074&quot; &quot;SP0141&quot; &quot;SP0142&quot; &quot;SP0157&quot;
-## [17] &quot;SP0220&quot; &quot;SP0221&quot; &quot;SP0247&quot; &quot;SP0991&quot; &quot;SP1002&quot; &quot;SP1083&quot;</code></pre>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]])[<span class="sc">!</span>(<span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]]) <span class="sc">%in%</span> <span class="fu">colnames</span>(UAB_data.mae[[<span class="st">&quot;genotypes_dosages.se&quot;</span>]]))]</span></code></pre></div>
+<pre><code>##  [1] &quot;SP1002&quot; &quot;SC0044&quot; &quot;SP0074&quot; &quot;SC0630&quot; &quot;SP1083&quot; &quot;SP0991&quot; &quot;SC0554&quot; &quot;SC0553&quot;
+##  [9] &quot;SC0548&quot; &quot;SC0541&quot; &quot;SC0463&quot; &quot;SP0247&quot; &quot;SC0145&quot; &quot;SC0119&quot; &quot;SC0103&quot; &quot;SP0157&quot;
+## [17] &quot;SP0142&quot; &quot;SP0141&quot; &quot;SC0068&quot;</code></pre>
 </div>
 </div>
 <div id="session-info" class="section level1" number="4">
 <h1><span class="header-section-number">4</span> Session Info</h1>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
 <pre><code>## R version 4.4.0 (2024-04-24)
 ## Platform: x86_64-pc-linux-gnu
 ## Running under: Red Hat Enterprise Linux

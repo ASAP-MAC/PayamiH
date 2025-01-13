@@ -113,8 +113,8 @@ cluster_sums.df <- left_join(biomarkers_medrxiv.df,
   split.data.frame(f = .$cluster_name) %>% 
   lapply(select, all_of(MultiAssayExperiment::colnames(UAB_data.mae)[["metaphlan_RelAbund.se"]])) %>% 
   lapply(colSums) %>% 
-  bind_cols(sample_name = names(.[[1]])) %>% 
-  relocate(sample_name)
+  bind_cols(SubjectID = names(.[[1]])) %>% 
+  relocate(SubjectID)
 
 cluster_sums.df %>% 
   mutate_if(is.numeric, round, 3) %>% 
@@ -125,12 +125,12 @@ These variables are far from normal, and log transformation does not help.
 
 ```{r, fig.cap= "Distribution of cumulative sum of relative abundances of cluster member species."}
 cluster_sums.df %>% 
-  select(-sample_name) %>% 
+  select(-SubjectID) %>% 
   reshape2::melt() %>% 
   mutate(
     log2Transf = log2(value + 1),
     sq.root = sqrt(value),
-    clr = compositions::clr(value +1 )
+    clr = compositions::clr(value + 1)
     ) %>% 
   reshape2::melt(
     variable.name = "Transformation"
@@ -173,10 +173,10 @@ rownames(variants_to_keep_rowData.df) <- variants_to_keep_rowData.df$RSID
 per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
   as.data.frame() %>% 
   set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
-  rownames_to_column("sample_name")
+  rownames_to_column("SubjectID")
 
-data_alltogether.df <- inner_join(cluster_sums.df, per_sample_dosages.df, by = "sample_name") %>% 
-  inner_join(samples_to_keep.df, by = "sample_name")
+data_alltogether.df <- inner_join(cluster_sums.df, per_sample_dosages.df, by = "SubjectID") %>% 
+  inner_join(samples_to_keep.df, by = "SubjectID")
 
 as_tibble(variants_to_keep_rowData.df) %>% 
   set_names(
@@ -233,9 +233,6 @@ kbl(variants_pruning_table, caption = paste0("Number of idependent variants (Kep
 n_indep_variants <- ifelse(all(is.na(variants_pruning_table)), 6, sum(sapply(variants_pruning_step, function(x) sum(grepl("kept", x$Details)))))
 ```
 
-`NB: Different results between Haydeh (manual) and me (R)`, this will require
-aligning the methods eventually.
-
 ## Sample inclusion criteria and statistical modeling
 
   - Collection method should not be `swab` 
@@ -281,57 +278,56 @@ $$
 ClusterSum_i \sim Age + Seq.Depth + PD + Variant_k + PD \times Variant_k
 $$
 
-```{r bugs and genetics with lm}
-clusters_vs_dosages.lm.list <- lapply(
-  make.names(colnames(select(cluster_sums.df, -sample_name))) %>% set_names(colnames(select(cluster_sums.df, -sample_name))), 
-  function(cl) {
-    sapply(
-      colnames(select(per_sample_dosages.df, -sample_name)), 
-      function(gt) {
-        f.la <- as.formula(
-          paste(cl, "~ Age_at_collection + seqs_scaled + ", paste(gt, "Case_status", sep = "*"))
-        )
-        return(
-          lm(f.la, data = data_alltogether.df %>% rename_all(.funs =make.names))
-        )
-      },
-      USE.NAMES = TRUE,
-  simplify = FALSE
-    )
-    
-  }
-)
+```{r}
+
+lm_results_interaction.df <- data_alltogether.df %>%
+  pivot_longer(
+    cols = starts_with("chr"), 
+    names_to = "variant", 
+    values_to = "dosage"
+  ) %>%
+  pivot_longer(
+    cols = colnames(select(cluster_sums.df, -SubjectID)), 
+    names_to = "clusterName",
+    values_to = "clusterRelAb"
+  ) %>% 
+  group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
+#  filter(sum(Case_status == "PD") >= 5 & sum(Case_status == "Control") >= 5) %>%  # Keep only groups with at least 5 observations
+  group_modify(~ {
+    # Apply linear model for each group and tidy the output
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status + dosage + dosage*Case_status, data = .x)
+    broom::tidy(lm_results)
+  }) %>% 
+  ungroup()
+
 
 # number of tests to correct for as bonferroni: number of cluster + variants tested
+n_tests <- length(unique(lm_results_interaction.df$clusterName)) * n_indep_variants
 
-n_tests <- length(clusters_vs_dosages.lm.list) * n_indep_variants
-  
-lm_results_corrected_bonferoni.df <- lapply(clusters_vs_dosages.lm.list, function(x) purrr::reduce(lapply(x, broom::tidy), rbind.data.frame)) %>% 
-         bind_rows(.id = "cluster_name") %>% 
+lm_results_interaction_bonferoni.df <- lm_results_interaction.df %>% 
   mutate(
     p.adj_bonferroni = p.value * n_tests,
     p.adj_bonferroni = ifelse(p.adj_bonferroni >1, 1, p.adj_bonferroni),
     significant = ifelse(p.adj_bonferroni < 0.1, TRUE, FALSE)
-    )
+  )
 
-
-write_tsv(lm_results_corrected_bonferoni.df, file = file.path(default_outdir, "01_lm_interaction_Variant.x.PD.tsv"))
+write_tsv(lm_results_interaction_bonferoni.df, file = file.path(default_outdir, "01_lm_interaction_Variant.x.PD.tsv"))
 
 ```
 
-We correct p-values using the Bonferroni method accounting for 6 clusters tested
-against LD-indepentend variants as defined above, for a total of `r n_tests` 
+We correct p-values using the Bonferroni method accounting for `r 6` clusters tested
+against `r n_indep_variants` independent variants as defined above, for a total of `r n_tests` 
 independent tests. Then, we consider associations between clusters and variants 
-with `p-value < 0.05` as significant further annotating whether each association 
+with `Adj. P-value < 0.05` as significant further annotating whether each association 
 passed family-wise error rate adjustment.
 
 ```{r bugs and genetics results table}
-lm_results_corrected_bonferoni.df %>%
-  filter(grepl("chr[0-9]", term), ) %>% 
+lm_results_interaction_bonferoni.df %>%
+  filter(grepl("dosage", term)) %>% 
   arrange(desc(abs(estimate))) %>% 
-  select(-significant) %>% 
+  select(-statistic) %>% 
   mutate_if(is.numeric, round, 4) %>% 
-  reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(term = reactable::colDef(width = 250)))
+  reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(variant = reactable::colDef(width = 200), term = reactable::colDef(width = 200)))
 ```
 
 ## Visualization of variant-cluster associations with P-value < 0.05
@@ -339,36 +335,42 @@ lm_results_corrected_bonferoni.df %>%
 ### Betas bar plots
 
 ```{r}
-data_plot.tmp <- lm_results_corrected_bonferoni.df %>% 
-  filter(grepl("chr", term)) %>% 
-  separate_wider_delim(cols = term, names = c("variant", "PD"), delim = ":", too_few = "align_start") %>% 
-  mutate(PD = case_when(
-    PD == "Case_statusPD" ~ "PD",
-    is.na(PD) ~ "Ctrl",
-    TRUE ~ "Other"
-  )) %>% 
+vgsub <- Vectorize(gsub)
+
+lm_results_interaction_bonferoni.df <- mutate(lm_results_interaction_bonferoni.df, term = vgsub("dosage", variant, term)) %>% 
+  select(-variant)
+
+data_plot.tmp <- lm_results_interaction_bonferoni.df %>% 
+  filter(grepl("chr", term)) %>%
+  mutate(
+    variant = str_extract(term, "chr.*"),
+    PD = ifelse(grepl("PD", term), "PD", "Control"), 
+    term = NULL) %>% 
+  # used for older plot version, but good to keep for future uses
   mutate(
     color_manual = case_when(
-      p.value < 0.05 & PD == "Ctrl" ~ "skyblue3",
-      p.value < 0.05 & PD == "PD" ~ "gold3",
-      p.adj_bonferroni >= 0.05 ~ "gray"
+      p.adj_bonferroni < 0.1 & PD == "Control" ~ "skyblue3",
+      p.adj_bonferroni < 0.1 & PD == "PD" ~ "gold3",
+      p.adj_bonferroni >= 0.1 ~ "gray"
   )
   )
+
 plotly::ggplotly(
 ggplot() +
-  geom_col(data = data_plot.tmp, mapping = aes(x = variant, y = estimate, fill = color_manual, key = p.value)) + 
-  scale_fill_identity() +
-  facet_wrap(~ cluster_name) +
+  geom_col(data = data_plot.tmp, mapping = aes(x = variant, y = estimate, fill = PD)) +
+  geom_text(data = data_plot.tmp %>% filter(p.value < 0.05, p.adj_bonferroni >= 0.1), mapping = aes(x = variant, y = estimate, label = "*")) +
+  geom_text(data = data_plot.tmp %>% filter(p.adj_bonferroni < 0.1), mapping = aes(x = variant, y = estimate, label = "**")) +
+  scale_fill_manual(values = c("gold3", "skyblue3")) +
+  facet_wrap(~ clusterName) +
   geom_hline(yintercept = 0, color = "gray30") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
   labs(
     y = "Beta estimates", 
-    title = "Full Betas range", 
-    caption = "Gold: significant in PD, Blue: significant in Healthy, Gray: Not significant"
-  )
+    title = "Full Betas range",
+    caption = "*: Nominal p-value < 0.05, **: Bonferroni-adjusted P-value < 0.1"
+  ), 
 )
 ```
-
 
 ### Boxplots of ClusterSum vs PD and variants (p-value < 0.05)
 
@@ -377,20 +379,31 @@ ones in boxplots taking into consideration genotypes and PD case/control status.
 Plots are sorted by decreasing absolute $\beta$ values.
 
 ```{r, fig.height=12, fig.width=8}
-plot_top_assoc <- lm_results_corrected_bonferoni.df %>%
+plot_top_assoc <- lm_results_interaction_bonferoni.df %>%
   filter(grepl("chr[0-9]", term), p.value < 0.05) %>% 
   arrange(desc(abs(estimate)))
 
 ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
-  clst <- plot_top_assoc$cluster_name[i]
-  varnt <- strsplit(plot_top_assoc$term[i], split = ":", fixed = TRUE) %>% sapply("[", 1)
+  clst <- plot_top_assoc$clusterName[i]
+  varnt <- str_extract(plot_top_assoc$term[i], "chr.*")
   bonfSignif <- plot_top_assoc$p.adj_bonferroni[i] < 0.1
   
-  return(ggplot(data_alltogether.df %>% set_names(make.names(colnames(.))),
+  majAll <- str_split(varnt, "_") %>% .[[1]] %>% .[length(.) - 1]
+  minAll <- str_split(varnt, "_") %>% .[[1]] %>% .[length(.)]
+  tmp <- data_alltogether.df %>% set_names(make.names(colnames(.)))
+  
+  tmp[,varnt] <- case_when(
+        round(tmp[[varnt]], 0) == 0 ~ paste(majAll, majAll, sep = "|"),
+        round(tmp[[varnt]], 0) == 1 ~ paste(majAll, minAll, sep = "|"),
+        round(tmp[[varnt]], 0) == 2 ~ paste(minAll, minAll, sep = "|"),
+        ) %>% 
+    factor(levels = c(paste(majAll, majAll, sep = "|"), paste(majAll, minAll, sep = "|"), paste(minAll, minAll, sep = "|")))
+  
+  return(ggplot(tmp,
          aes(
-           x = as.factor(round(eval(
+           x = eval(
              parse(text = varnt)
-           ), 0)),
+           ),
            y = eval(
              parse(text = make.names(clst)
            )),
@@ -429,12 +442,12 @@ crude p-values are of interest, so we will not adjust them.
 ```{r}
 lm_split_by_variant_and_dosage <- data_alltogether.df %>%
   pivot_longer(
-    cols = colnames(select(per_sample_dosages.df, -sample_name)), 
+    cols = colnames(select(per_sample_dosages.df, -SubjectID)), 
     names_to = "variant", 
     values_to = "dosage"
   ) %>%
   pivot_longer(
-    cols = colnames(select(cluster_sums.df, -sample_name)), 
+    cols = colnames(select(cluster_sums.df, -SubjectID)), 
     names_to = "clusterName",
     values_to = "clusterRelAb"
   ) %>%
@@ -580,9 +593,9 @@ CST_assigns <- as.character(apply(CST_probs, 1, function(x) {
 
 CST_final <- cbind.data.frame(CST_assigns, CST_probs) %>% 
   set_names(c("CST_assign", paste("CST", 1:ncol(CST_probs), "prob", sep = "_"))) %>% 
-  rownames_to_column("sample_name")
+  rownames_to_column("SubjectID")
 
-metadata_with_CST.df <- inner_join(CST_final, data_alltogether.df, by = "sample_name")
+metadata_with_CST.df <- inner_join(CST_final, data_alltogether.df, by = "SubjectID")
 
 metadata_with_CST.df
 ```
@@ -620,4 +633,3 @@ by Haydeh.
 ```{r}
 sessionInfo()
 ```
-

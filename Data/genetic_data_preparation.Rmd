@@ -101,7 +101,7 @@ micromamba install bcftools
 3 - Indexing of VCF file for fast querying (necessary for bcftools)
 
 ```{bash tabix vcf files, eval=FALSE}
-cd /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/
+cd /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/renamed_samples/
 
 micromamba activate geneticTools
 
@@ -214,13 +214,13 @@ mkdir queried_variants_PD
 
 micromamba activate geneticTools
 
-for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%DS]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:DS//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%DS]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/renamed_samples/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:DS//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Dosages.txt; done
 
-for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%GT]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:GT//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
+for chr in $(ls | grep -oE "^(chr[0-9]*|chrX)"); do bcftools query -H -f "%CHROM\t%POS\t%REF\t%ALT\t%INFO[\t%GT]\n" -r $(tr "\n" "," < ${chr}_variants_Tabix.txt | sed "s/,$//") /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/renamed_samples/${chr}.dose.vcf.gz | sed -e "s/#//g" -e "s/:GT//g" -e "s/\[[0-9]*\]//g" -e "s/(null)/INFO/g" > queried_variants_PD/${chr}_pd_Genotypes.txt; done
 
 ```
 
 ```{bash eval=FALSE}
-rm /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/slurm*
+rm /data/project/payami-lab/payamilab/TOPMed_imputed_genotypes_2022/renamed_samples/slurm*
 ```
 

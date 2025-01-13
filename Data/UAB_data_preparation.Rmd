@@ -62,32 +62,25 @@ for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
 
 ```{r}
 # get sample metadata
-UAB_metadata <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx", sheet = "subject_metadata") %>% 
-  as.data.frame() %>% 
-  # this is to get only UAB samples
-  filter(Location == "Birmingham_AL")
+UAB_metadata <- as.data.frame(readxl::read_xlsx("/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx", sheet = "subject_metadata"))
 rownames(UAB_metadata) <- UAB_metadata$SubjectID
 
 # get Metaphlan relative abundances
-UAB_metaphlan_relab <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx", sheet = "metaphlan_rel_ab") %>% 
+UAB_metaphlan_relab <- readxl::read_xlsx("/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx", sheet = "metaphlan_rel_ab") %>% 
   wrangle_metaphlan("Species")
-UAB_metaphlan_relab$profiles <- UAB_metaphlan_relab$profiles[,UAB_metadata$sample_name] %>% magrittr::set_colnames(rownames(UAB_metadata))
 
 # get Metaphlan estimated counts
-UAB_metaphlan_counts <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx", sheet = "metaphlan_counts") %>% wrangle_metaphlan("Species")
+UAB_metaphlan_counts <- readxl::read_xlsx("/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx", sheet = "metaphlan_counts") %>% wrangle_metaphlan("Species")
 UAB_metaphlan_counts$profiles <- round(UAB_metaphlan_counts$profiles, 0)
-UAB_metaphlan_counts$profiles <- UAB_metaphlan_counts$profiles[,UAB_metadata$sample_name] %>% magrittr::set_colnames(rownames(UAB_metadata))
 
 # get HUMAnN KO tables
-UAB_humann_KO <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx", sheet = "humann_KO_group_counts") %>% 
+UAB_humann_KO <- readxl::read_xlsx("/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx", sheet = "humann_KO_group_counts") %>% 
   wrangle_humann(input_type = "ko")
 UAB_humann_KO$profiles <- round(UAB_humann_KO$profiles, 0)
-UAB_humann_KO$profiles <- UAB_humann_KO$profiles[, UAB_metadata$sample_name] %>% magrittr::set_colnames(rownames(UAB_metadata))
 
 # get HUMAnN Pathway tables
-UAB_humann_pathways <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_NGRC_UAB515.xlsx", sheet = "humann_pathway_counts") %>% wrangle_humann(input_type = "pathways")
+UAB_humann_pathways <- readxl::read_xlsx("/data/project/payami-lab/payamilab/datasets_sample_renaming/UAB_new_SourceFile.xlsx", sheet = "humann_pathway_counts") %>% wrangle_humann(input_type = "pathways")
 UAB_humann_pathways$profiles <- round(UAB_humann_pathways$profiles, 0)
-UAB_humann_pathways$profiles <- UAB_humann_pathways$profiles[, UAB_metadata$sample_name] %>% magrittr::set_colnames(rownames(UAB_metadata))
 
 # find samples intersection across experiments and metadata
 
@@ -102,10 +95,10 @@ samples_per_data_piece <- list(
 samples_intersect <- reduce(samples_per_data_piece, intersect)
 
 # load samples to exclude (not necessary in DoD, but necessary in UAB and UAB)
-samples_to_exclude <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/exclusions NGRC UAB_ZW_HP.xlsx", sheet = "R-friendly list") %>% 
-  mutate(sample_name = make.names(sample_name))
+samples_to_exclude.df <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/mapping_and_exclusion_lists/exclusions NGRC UAB_ZW_HP.xlsx", sheet = "R-friendly list")
 
-samples_intersect_after_exclusion <- samples_intersect[!(samples_intersect %in% samples_to_exclude$sample_name)]
+#samples_intersect_after_exclusion <- samples_intersect[!(samples_intersect %in% samples_to_exclude.df$sample_name)]
+samples_intersect_after_exclusion <- samples_intersect
 
 # reorder colnames so they all match the metadata
 
@@ -117,6 +110,9 @@ UAB_humann_pathways$profiles <- UAB_humann_pathways$profiles[, samples_intersect
 sample_metadata.df <- UAB_metadata[samples_intersect_after_exclusion,] %>% 
   mutate(seqs_scaled = scale(total_sequences))
 
+samples_to_exclude.df %>% 
+  filter(sample_name %in% samples_intersect) %>% 
+  kbl(caption = "List of samples excluded from the UAB dataset, along with reason for exclusion.")
 ```
 
 ## Prepare genotype data
@@ -206,50 +202,12 @@ cbind(c("Tot" = sum(nVars_by_genes_All), nVars_by_genes_All),
 
 ```
 
-## Continue from here - Find which metagenomics samples also have genetic data 
-
-For UAB, many samples are named differently. For this reason, we need one extra 
-layer of mapping:
-
-```{r}
-mapping_names_UAB <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/NGRC_Hamza_GWAS_microbiome_genotype_ID_map.xlsx") %>% 
-  set_names(c("microbiome_id", "genotype_id"))
-
-as_tibble(mapping_names_UAB)
-
-```
-
-```{r}
-  
-variant_metadata_cols <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[1:max(which(grepl("INFO", colnames(gwasCatalog_variants_dosages_in_TOPMed.df))))]
-names(variant_metadata_cols) <- variant_metadata_cols
-
-sampleIDs_remapped <- sapply(
-  rownames(sample_metadata.df), 
-  function(x) 
-    ifelse(purrr::is_empty(mapping_names_UAB$genotype_id[grep(x, mapping_names_UAB$microbiome_id)]),
-           x, mapping_names_UAB$genotype_id[grep(x, mapping_names_UAB$microbiome_id)]), 
-  simplify = FALSE, 
-  USE.NAMES = TRUE)
-
-sampleIDs_TOPMed_remapped <- lapply(sampleIDs_remapped, function(x) grep(x, colnames(gwasCatalog_variants_dosages_in_TOPMed.df), value = TRUE)) %>% 
-  unlist()
-
-newColnames <- c(variant_metadata_cols, sampleIDs_TOPMed_remapped)
-
-gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df <- select(gwasCatalog_variants_dosages_in_TOPMed.df, all_of(newColnames))
-gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df <- select(gwasCatalog_variants_hardcalls_in_TOPMed.df, all_of(newColnames))
-
-```
-
-At this step, we have generated a set of genotypes to test against the microbiome
-as found in the GWAS catalog and our genotypes. It is a `samples x genotypes` matrix.
-
 ```{r}
 # manipulate genetics data a bit, to make it more usable in the SummarizedExperiment
 # context
+variant_metadata_cols <- colnames(gwasCatalog_variants_dosages_in_TOPMed.df)[1:max(which(grepl("INFO", colnames(gwasCatalog_variants_dosages_in_TOPMed.df))))]
 
-tmp <- gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df
+tmp <- gwasCatalog_variants_dosages_in_TOPMed.df
 samples_intersect_genetics <- intersect(colnames(tmp), rownames(sample_metadata.df))
 metadata_cols_genetics <- colnames(tmp)[1:max(grep("INFO_", colnames(tmp)))]
 variants_made_unique <- make.unique(tmp$RSID)
@@ -257,7 +215,7 @@ rownames(tmp) <- variants_made_unique
 
 genetics_matrix_dosages <- as.matrix(tmp[variants_made_unique, samples_intersect_genetics])
 
-tmp <- gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df
+tmp <- gwasCatalog_variants_hardcalls_in_TOPMed.df
 rownames(tmp) <- variants_made_unique
 
 genetics_matrix_hardcalls <- as.matrix(tmp[variants_made_unique, samples_intersect_genetics])

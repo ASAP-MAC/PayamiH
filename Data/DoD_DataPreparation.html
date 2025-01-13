@@ -7,7 +7,7 @@
 
         <meta name="author" content="Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami" />
     
-        <meta name="date" content="2024-12-16" />
+        <meta name="date" content="2025-01-13" />
     
     <title>DoD data preparation into MultiAssayExperiment format</title>
 
@@ -2965,7 +2965,7 @@ margin-left: 0 !important;
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
                   <p class="author"><span class="glyphicon glyphicon-user"></span> Giacomo Antonello, Zachary Wallen, Charles Murchinson, Levi Waldron, Haydeh Payami</p>
-                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2024-12-16</p>
+                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2025-01-13</p>
           </div>
    </div>
      
@@ -2975,7 +2975,7 @@ margin-left: 0 !important;
    
 <!-- Don't indent these lines or it will mess pre blocks indentation --> 
 <div id="main">
-<p>Latest render: Date: 2024-Dec-16 Time: 15:13:40</p>
+<p>Latest render: Date: 2025-Jan-13 Time: 11:04:45</p>
 <div id="prepare-microbiome-related-data" class="section level1" number="1">
 <h1><span class="header-section-number">1</span> Prepare microbiome-related data</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># get Metaphlan relative abundances</span></span>
@@ -3180,8 +3180,9 @@ OTHER
 </div>
 <div id="rename-genotype-data-with-grep-and-str_extract" class="section level2" number="1.2">
 <h2><span class="header-section-number">1.2</span> Rename genotype data with grep and str_extract</h2>
-<p>The sample names in the TOPMed data are duplicated with the
-<code>sample1234_sample1234</code>, while microbiome data sets have only <code>sample1234</code>.</p>
+<p>In DoD, sample names in the TOPMed data are almost identical, except they are
+duplicated with the following pattern: microbiome <code>sample1234</code> is stored as
+<code>sample1234_sample1234</code> in TOPMed data.</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>variant_metadata_cols <span class="ot">&lt;-</span> <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">which</span>(<span class="fu">grepl</span>(<span class="st">&quot;INFO&quot;</span>, <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df))))]</span>
 <span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>sampleIDs <span class="ot">&lt;-</span> <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df)[<span class="fu">grepl</span>(<span class="fu">paste</span>(<span class="fu">paste0</span>(<span class="fu">rownames</span>(sample_metadata.df), <span class="at">collapse =</span> <span class="st">&quot;|&quot;</span>)), <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df))]</span>
 <span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a></span>
@@ -3201,22 +3202,22 @@ OTHER
 as found in the GWAS catalog and our genotypes. It is a <code>samples x genotypes</code> matrix.</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># manipulate genetics data a bit, to make it more usable in the SummarizedExperiment</span></span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="co"># context</span></span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a></span>
-<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_dosages_in_TOPMed_selectSamps.df</span>
-<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>samples_intersect_genetics <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(tmp), <span class="fu">rownames</span>(sample_metadata.df))</span>
-<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>metadata_cols_genetics <span class="ot">&lt;-</span> <span class="fu">colnames</span>(tmp)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">grep</span>(<span class="st">&quot;INFO_&quot;</span>, <span class="fu">colnames</span>(tmp)))]</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>variant_metadata_cols <span class="ot">&lt;-</span> <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df)[<span class="dv">1</span><span class="sc">:</span><span class="fu">max</span>(<span class="fu">which</span>(<span class="fu">grepl</span>(<span class="st">&quot;INFO&quot;</span>, <span class="fu">colnames</span>(gwasCatalog_variants_dosages_in_TOPMed.df))))]</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_dosages_in_TOPMed.df</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>samples_intersect_genetics <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(tmp), <span class="fu">rownames</span>(sample_metadata.df))</span>
 <span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>variants_made_unique <span class="ot">&lt;-</span> <span class="fu">make.unique</span>(tmp<span class="sc">$</span>RSID)</span>
 <span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
 <span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a></span>
 <span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>genetics_matrix_dosages <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
 <span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a></span>
-<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_hardcalls_in_TOPMed_selectSamps.df</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> gwasCatalog_variants_hardcalls_in_TOPMed.df</span>
 <span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="fu">rownames</span>(tmp) <span class="ot">&lt;-</span> variants_made_unique</span>
 <span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a></span>
 <span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a>genetics_matrix_hardcalls <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tmp[variants_made_unique, samples_intersect_genetics])</span>
 <span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a></span>
 <span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a></span>
-<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>genetics_metadata <span class="ot">&lt;-</span> tmp[variants_made_unique, metadata_cols_genetics]</span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>genetics_metadata <span class="ot">&lt;-</span> tmp[variants_made_unique, variant_metadata_cols]</span>
 <span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a>sample_metadata_genetics <span class="ot">&lt;-</span> sample_metadata.df[samples_intersect_genetics,]</span></code></pre></div>
 </div>
 <div id="generate-a-multiassayexperiment-object-with-all-data-together" class="section level2" number="1.3">
@@ -3288,8 +3289,8 @@ as found in the GWAS catalog and our genotypes. It is a <code>samples x genotype
 <pre><code>## A MultiAssayExperiment object of 6 listed
 ##  experiments with user-defined names and respective classes.
 ##  Containing an ExperimentList class object of length 6:
-##  [1] genotypes_dosages.se: SummarizedExperiment with 315 rows and 708 columns
-##  [2] genotypes_hardcalls.se: SummarizedExperiment with 315 rows and 708 columns
+##  [1] genotypes_dosages.se: SummarizedExperiment with 315 rows and 716 columns
+##  [2] genotypes_hardcalls.se: SummarizedExperiment with 315 rows and 716 columns
 ##  [3] metaphlan_RelAbund.se: SummarizedExperiment with 719 rows and 724 columns
 ##  [4] metaphlan_Counts.se: SummarizedExperiment with 720 rows and 724 columns
 ##  [5] humann_KO.se: SummarizedExperiment with 8528 rows and 724 columns
@@ -3345,7 +3346,7 @@ Metaphlan (Relative Abundance)
 724
 </td>
 <td style="text-align:right;">
-708
+716
 </td>
 </tr>
 <tr>
@@ -3359,7 +3360,7 @@ Metaphlan (Counts)
 724
 </td>
 <td style="text-align:right;">
-708
+716
 </td>
 </tr>
 <tr>
@@ -3373,7 +3374,7 @@ HUMAnN3 (Kegg Orthology)
 724
 </td>
 <td style="text-align:right;">
-708
+716
 </td>
 </tr>
 <tr>
@@ -3387,7 +3388,7 @@ HUMAnN3 (MetaCyc Pathways)
 724
 </td>
 <td style="text-align:right;">
-708
+716
 </td>
 </tr>
 <tr>
@@ -3401,7 +3402,7 @@ Metadata
 724
 </td>
 <td style="text-align:right;">
-708
+716
 </td>
 </tr>
 </tbody>
@@ -3410,8 +3411,7 @@ Metadata
 <div id="microbiome-samples-not-retrieved-in-genetic-data" class="section level2" number="3.2">
 <h2><span class="header-section-number">3.2</span> Microbiome samples not retrieved in Genetic data</h2>
 <div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">colnames</span>(DoD_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]])[<span class="sc">!</span>(<span class="fu">colnames</span>(DoD_data.mae[[<span class="st">&quot;metaphlan_RelAbund.se&quot;</span>]]) <span class="sc">%in%</span> <span class="fu">colnames</span>(DoD_data.mae[[<span class="st">&quot;genotypes_dosages.se&quot;</span>]]))]</span></code></pre></div>
-<pre><code>##  [1] &quot;DP166&quot;  &quot;DP157&quot;  &quot;DP067&quot;  &quot;DC104&quot;  &quot;DC033&quot;  &quot;DC017&quot;  &quot;DC009&quot;  &quot;SP1114&quot;
-##  [9] &quot;SP1113&quot; &quot;SP1112&quot; &quot;SC0637&quot; &quot;SC0558&quot; &quot;DP418&quot;  &quot;DP324&quot;  &quot;DC283&quot;  &quot;DC213&quot;</code></pre>
+<pre><code>## [1] &quot;SP1114&quot; &quot;SP1113&quot; &quot;SP1112&quot; &quot;SC0637&quot; &quot;SC0558&quot; &quot;DP418&quot;  &quot;DC283&quot;  &quot;DC213&quot;</code></pre>
 </div>
 </div>
 <div id="session-info" class="section level1" number="4">

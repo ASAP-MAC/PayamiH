@@ -1,3 +1,11 @@
-# first ignore everything under the Data folder
+# first ignore genetic data
+Data/GWAS_catalog_PD_variants/queried_variants_PD/
 
-Data/*
+# then ignore R data binaries
+Data/*.RData
+Data/*.Rdata
+Data/*.rdata
+Data/*RDS
+Data/*.Rds
+Data/*.rds
+
