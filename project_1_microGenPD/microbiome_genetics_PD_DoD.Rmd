@@ -416,7 +416,6 @@ ggplot() +
 )
 ```
 
-
 ### Boxplots of ClusterSum vs PD and variants (p-value < 0.05)
 
 Only a few associations are significant here. Below you can find all significant
