@@ -1,6 +1,8 @@
 # first ignore genetic data
 Data/GWAS_catalog_PD_variants/queried_variants_PD/
 
+Data/GWAS_catalog_PD_variants/*.RData
+
 # then ignore R data binaries
 Data/*.RData
 Data/*.Rdata
