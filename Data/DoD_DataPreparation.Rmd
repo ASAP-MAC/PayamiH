@@ -60,8 +60,9 @@ for(f in list.files("~/bin/biobakeryUtils/", full.names = TRUE)){
 
 # Prepare microbiome-related data
 
-```{r}
+## Profiles
 
+```{r}
 # get Metaphlan relative abundances
 DoD_metaphlan_relab <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "metaphlan_rel_ab") %>% 
   wrangle_metaphlan("Species")
@@ -81,8 +82,9 @@ DoD_humann_pathways$profiles <- round(DoD_humann_pathways$profiles, 0)
 
 # get sample metadata
 DoD_metadata <- readxl::read_xlsx("/data/project/payami-lab/payamilab/0_Source_Data/Source_Data_24Oct2022 (DoD from Zenodo).xlsx", sheet = "subject_metadata") %>% 
-  as.data.frame()
-rownames(DoD_metadata) <- DoD_metadata$sample_name
+  as.data.frame() %>% 
+  rename(SubjectID = sample_name)
+rownames(DoD_metadata) <- DoD_metadata$SubjectID
 
 # find samples intersection across experiments and metadata
 
@@ -96,20 +98,19 @@ samples_per_data_piece <- list(
 
 samples_intersect <- reduce(samples_per_data_piece, intersect)
 
-
-
 # reorder colnames so they all match the metadata
 
 DoD_metaphlan_relab$profiles <- DoD_metaphlan_relab$profiles[, samples_intersect]
 DoD_metaphlan_counts$profiles <- DoD_metaphlan_counts$profiles[, samples_intersect]
 DoD_humann_KO$profiles <- DoD_humann_KO$profiles[, samples_intersect]
 DoD_humann_pathways$profiles <- DoD_humann_pathways$profiles[, samples_intersect]
+```
 
+## Subject metadata
+
+```{r}
 sample_metadata.df <- DoD_metadata[samples_intersect,] %>% 
   mutate(seqs_scaled = scale(total_sequences))
-
-
-
 ```
 
 ## Prepare genotype data
