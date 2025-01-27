@@ -1,3 +1,17 @@
+# 01-27-2025
+
+After multiple iterations, we are now going for the following 3 research questions:
+
+	* Q1 - Is there interaction between SNP variant dosage and PD status (case or control) on cluster abundance?
+	
+	* Q2 - is SNP VAF associated with cluster abundance in PD?
+
+	* Q3 - is SNP VAF associated with cluster abundance in Controls?
+
+These questions are addressed in all 3 datasets and results are stored in project1_microGenPD/output_{DoD,NGRC,UAB}/Q...
+
+Files in there are numbered as 1: interaction model, 2: linDA regression, 3: gene set enrichment analysis.	
+
 # 12-13-2024
 
 We found interesting $PD \times genetics$ signals in PD and healthy people with the DoD dadaset, but also stumbled upon samples unexpectedly missing. We will first concentrate on reconciling these missing data

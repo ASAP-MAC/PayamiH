@@ -1,0 +1,142 @@
+---
+title: "chr4_89840793_T_G - Further Insights"
+author: "Giacomo Antonello, Zachary D. Wallen, Charles M. Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: hide
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+
+default_outdir <- "output_further_insights/"
+dir.create(default_outdir, showWarnings = FALSE)
+```
+
+```{r, include=FALSE}
+
+# Check and install necessary CRAN packages
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra", "plotly", "modeest")
+
+install.packages(
+  CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
+)
+
+# Check and install necessary Bioconductor packages
+BioC_required_packages <- c("Maaslin2", "ANCOMBC", "biomaRt", "mia", "phyloseq", "microbiome","SIAMCAT", "fgsea")
+BioC_required_packages <- BioC_required_packages[!(BioC_required_packages %in% installed.packages())]
+
+if(length(BioC_required_packages) > 0) {
+  BiocManager::install(BioC_required_packages[!(BioC_required_packages %in% installed.packages())],
+                       ask = FALSE,
+                       update = TRUE)
+}
+
+
+# load basic data manipulation packages
+library(DT)
+library(kableExtra)
+library(MultiAssayExperiment)
+library(ggpubr)
+library(tidyverse)
+
+theme_set(theme_light())
+# load previously wrangled data
+load("../Data/DoD_data.mae.RData")
+load("../Data/NGRC_data.mae.RData")
+load("../Data/UAB_data.mae.RData")
+
+all3Datasets.list <- list(
+  DoD = DoD_data.mae,
+  NGRC = NGRC_data.mae,
+  UAB = UAB_data.mae
+)
+rm(BioC_required_packages,CRAN_required_packages)
+gc(verbose = FALSE)
+
+```
+
+# Prepare data
+
+Make a data frame including:
+  
+  * Subject metadata
+  
+  * Variant genotypes
+  
+  * Clusters' abundances
+  
+```{r}
+biomarkers_medrxiv.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
+
+
+data_for_plots_full.list <- lapply(all3Datasets.list, function(dataset) 
+  left_join(
+  biomarkers_medrxiv.df,
+  as.data.frame(assay(dataset, "metaphlan_RelAbund.se")/100) %>%
+    rownames_to_column("species_metaphlan"),
+  by = "species_metaphlan"
+  ) %>% 
+  split.data.frame(f = .$cluster_name) %>% 
+  lapply(select, all_of(MultiAssayExperiment::colnames(dataset)[["metaphlan_RelAbund.se"]])) %>% 
+  lapply(colSums) %>% 
+  bind_cols(SubjectID = names(.[[1]])) %>% 
+  relocate(SubjectID) %>% 
+    # add subject metadata
+    inner_join(as.data.frame(colData(dataset)), by = "SubjectID") %>% 
+    #add variant dosage as genotype 
+  inner_join(as.data.frame(t(assay(dataset, "genotypes_hardcalls.se"))) %>% 
+               select(rs983361) %>% 
+               mutate(rs983361 = case_when(
+                 rs983361 == "0|0" ~ "TT",
+                 rs983361 == "1|1" ~ "GG",
+                 TRUE ~ "TG") %>% factor(levels = c("TT", "TG", "GG"))
+                 ) %>% 
+    rownames_to_column("SubjectID"), 
+  by = "SubjectID")
+)
+
+
+```
+
+
+# Allele count of chr4_89840793 (rs983361) across 3 datasets
+
+# Boxplot of Fiber degraders vs chr4_89840793_T_G (rs983361) in all 3 datasets
+
+```{r, fig.height=12}
+
+plots_as_list <- lapply(names(data_for_plots_full.list), function(dataset)
+  ggplot(
+    data_for_plots_full.list[[dataset]],
+    aes(x = rs983361,
+        y = `Fiber Degraders`,
+        color = Case_status)
+    ) +
+      geom_point(position = position_jitterdodge(jitter.width = 0.2)) +
+    geom_boxplot(alpha = 0.4,
+                 show.legend = FALSE,
+                 outliers = FALSE) +
+    scale_color_manual(values = c("skyblue3", "gold3"))  +
+    stat_compare_means(method = "wilcox", show.legend = FALSE) +
+    labs(
+      title = dataset
+    )
+  )
+
+ggarrange(plotlist = plots_as_list, common.legend = T, ncol = 1)
+```
+

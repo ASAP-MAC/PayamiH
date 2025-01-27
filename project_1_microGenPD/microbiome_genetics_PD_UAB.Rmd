@@ -1,7 +1,7 @@
 ---
 title: "PD, microbiome and host genetics on SNCA and HLA variants"
 subtitle: "Data: UAB"
-author: "Giacomo Antonello, Zachary D. Wallen, Charles M. Murchinson, Levi Waldron, Haydeh Payami"
+author: "Giacomo Antonello, Zachary D. Wallen, Charles F. Murchinson, Levi Waldron, Haydeh Payami"
 date: "`r Sys.Date()`"
 output:
   rmdformats::readthedown:
@@ -24,12 +24,18 @@ knitr::opts_chunk$set(
 )
 
 default_outdir <- "output_UAB/"
+
 dir.create(default_outdir, showWarnings = FALSE)
+dir.create(file.path(default_outdir, "Q1"))
+dir.create(file.path(default_outdir, "Q2"))
+dir.create(file.path(default_outdir, "Q3"))
+
 ```
 
 ```{r, include=FALSE}
+
 # Check and install necessary CRAN packages
-CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra")
+CRAN_required_packages <- c("tidyverse", "gwasrapidd", "DT", "kableExtra", "data.table", "ggpubr", "BiocManager", "readxl","kableExtra", "plotly", "modeest")
 
 install.packages(
   CRAN_required_packages[!(CRAN_required_packages %in% installed.packages())] 
@@ -47,7 +53,6 @@ if(length(BioC_required_packages) > 0) {
 
 
 # load basic data manipulation packages
-library(phyloseq)
 library(DT)
 library(kableExtra)
 library(MultiAssayExperiment)
@@ -55,24 +60,23 @@ library(ggpubr)
 library(tidyverse)
 
 theme_set(theme_light())
-
+# load previously wrangled data
+load("../Data/UAB_data.mae.RData")
+  
 rm(BioC_required_packages,CRAN_required_packages)
 gc(verbose = FALSE)
 ```
 
-Below is the data sources for UAB. This has been 
-wrangled by Giacomo to make one single data object that would, hopefully, speed
-things up in future analyses. This data object contains microbiome, pathway, 
+Below is the data sources for Wallen et al. 2022 (Nat Comms). Data have been 
+further prepared by Giacomo to make one single data object that would hopefully, 
+speed up the preparation phase. This data object contains microbiome, pathway, 
 participants data and genetic data.
 
 ```{r}
-# load previously wrangled data
-load("../Data/UAB_data.mae.RData")
-
 UAB_data.mae
 ```
 
-Genetic data have been retrieved with the protocol available in `00_UAB_DataPreparation.html`.
+Genetic data have been retrieved with the protocol available in `Data/genetic_data_preparation.{Rmd,html}`.
 In brief:
 
   1. The GWAS catalog was searched for variants associated with the ontology term
@@ -84,7 +88,7 @@ In brief:
   2. Gene annotation was taken from `biomaRt`, but the GWAS catalog had annotations
   too. Naming is based on the HUGO nomenclature.
 
-# Assocation between PD markers and SNCA and HLA gene variants  (ClustSum)
+# Approach 1 - Sum bacteria in each cluster together
 
 ## Define `ClusterSum`
 
@@ -101,15 +105,17 @@ Our first approach is to do the following:
 ```{r}
 biomarkers_medrxiv.df <- readxl::read_xlsx("../Data/Biomarkers_Payami_medRxiv.xlsx")
 
-datatable(biomarkers_medrxiv.df %>% select(-species_metaphlan, `Number of connections`))
+datatable(biomarkers_medrxiv.df %>% select(-species_metaphlan, `Number of connections`), caption = "List of Bacterial species and their cluster assignment as manually curated by prof. Haydeh Payami")
 ```
 
 ```{r}
 
-cluster_sums.df <- left_join(biomarkers_medrxiv.df, 
-          as.data.frame(assay(UAB_data.mae, "metaphlan_RelAbund.se")/100) %>%
-            rownames_to_column("species_metaphlan"), 
-          by = "species_metaphlan") %>%
+cluster_sums.df <- left_join(
+  biomarkers_medrxiv.df,
+  as.data.frame(assay(UAB_data.mae, "metaphlan_RelAbund.se")/100) %>%
+    rownames_to_column("species_metaphlan"),
+  by = "species_metaphlan"
+  ) %>% 
   split.data.frame(f = .$cluster_name) %>% 
   lapply(select, all_of(MultiAssayExperiment::colnames(UAB_data.mae)[["metaphlan_RelAbund.se"]])) %>% 
   lapply(colSums) %>% 
@@ -118,7 +124,36 @@ cluster_sums.df <- left_join(biomarkers_medrxiv.df,
 
 cluster_sums.df %>% 
   mutate_if(is.numeric, round, 3) %>% 
-datatable(caption = "Examples of values obtained with the sum method across clusters. These will be the variables we will use to test association with variant dosages")
+datatable(caption = "Snippet of values obtained with the sum method across clusters. These will be the variables we will use to test association with variants' dosages")
+```
+
+For each cluster, see how many species were correctly mapped to the UAB dataset.
+
+```{r}
+
+n_all_species <- biomarkers_medrxiv.df %>% 
+  count(cluster_name)
+
+n_mapped_species <- inner_join(
+  biomarkers_medrxiv.df,
+  as.data.frame(assay(UAB_data.mae, "metaphlan_RelAbund.se")/100) %>%
+    rownames_to_column("species_metaphlan"),
+  by = "species_metaphlan"
+  ) %>% 
+  count(cluster_name)
+
+unmapped_species <- biomarkers_medrxiv.df %>%
+  mutate(Species2 = case_when(!(species_metaphlan %in% rownames(
+    assay(UAB_data.mae, "metaphlan_RelAbund.se")
+  )) ~ Species,
+  TRUE ~ "")) %>% group_by(cluster_name) %>% reframe(unmapped = paste0(Species2[Species2 != ""], collapse = ", "))
+
+full_join(n_all_species, n_mapped_species, by = "cluster_name") %>% 
+  full_join(unmapped_species, by = "cluster_name") %>% 
+  set_names(c("Cluster Name", "Total", "N. Mapped", "Not Mapped")) %>% 
+  arrange(desc(Total)) %>% 
+  kbl(caption = "Number of total species and correctly mapped species in the UAB dataset")
+
 ```
 
 These variables are far from normal, and log transformation does not help.
@@ -129,8 +164,7 @@ cluster_sums.df %>%
   reshape2::melt() %>% 
   mutate(
     log2Transf = log2(value + 1),
-    sq.root = sqrt(value),
-    clr = compositions::clr(value + 1)
+    sq.root = sqrt(value)
     ) %>% 
   reshape2::melt(
     variable.name = "Transformation"
@@ -140,7 +174,6 @@ cluster_sums.df %>%
       Transformation == "value" ~ 'untransformed',
       Transformation == "log2Transf" ~ 'log2',
       Transformation == "sq.root" ~ 'sq.root',
-      Transformation == "clr" ~ 'clr',
       TRUE ~ 'error'
       )
     ) %>% 
@@ -149,13 +182,14 @@ cluster_sums.df %>%
   facet_wrap(~variable) 
 ```
 
-## Define variants of interest and number of independent tests
+## Define variants of interest and number of independent variants tested
 
 Genetic variants were included if retained if:
-  - they were associated with PD in any GWAS catalog entry
-  - they were found in the Genetic data
-  - they had a gene name associated to them (for easy lookup)
 
+  - they were associated with PD in any GWAS catalog entry (P < 5e-8)
+  - they were found in the TOPMed imputed genotype data
+  - they had a gene name associated to them (for easy lookup, but exception may
+  be missed)
 
 ```{r}
 
@@ -175,8 +209,14 @@ per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rowname
   set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
   rownames_to_column("SubjectID")
 
-data_alltogether.df <- inner_join(cluster_sums.df, per_sample_dosages.df, by = "SubjectID") %>% 
-  inner_join(samples_to_keep.df, by = "SubjectID")
+data_alltogether.df <- inner_join(
+  # clustered bacteria variables
+  cluster_sums.df, 
+  # variants available to test
+  per_sample_dosages.df, by = "SubjectID") %>% 
+  inner_join(
+  # other individual data (metadata), excluding unwanted samples
+    samples_to_keep.df, by = "SubjectID")
 
 as_tibble(variants_to_keep_rowData.df) %>% 
   set_names(
@@ -189,26 +229,31 @@ as_tibble(variants_to_keep_rowData.df) %>%
   datatable(caption = "List of variants found in the GWAS catalog that are explicitly mapped to the SNCA or HLA genes.")
 ```
 
-Some of these variants are in high LD. We want to adjust for the total number of 
-independent tests, therefore we adjust for variants in low LD only across the genes
-of interest. For the sake of reproducibility, we will use a `LDlink` (by NIH) 
-API to prune the variants of interest.
-
 ```{r LDlink parameters setup}
 r2_thresh <- 0.1
+refPop <- "CEU"
 maf_thresh <- 0.01
 ```
 
-```{r LD pruning}
+Some of these variants are in high LD. We want to adjust for the total number of 
+independent tests, therefore we adjust for variants in low LD only across the 
+genes of interest. We used an R API based on NIH's tool `LDlink`. Parameters
+chosen are:
+
+  - r2 threshold = `r r2_thresh`
+  - reference population (1000 Genomes) = `r refPop`
+  - MAF threshold = `r maf_thresh`
+
+```{r}
 
 cache(
   variants_pruning_step <- split.data.frame(variants_to_keep_rowData.df,variants_to_keep_rowData.df$CHROM) %>% 
-  lapply(
+  lapply( 
     function(x)
     LDlinkR::SNPclip(
       r2_threshold = r2_thresh,
       snps = x$RSID,
-      pop = "CEU",
+      pop = refPop,
       maf_threshold = maf_thresh,
       token = "78e50d5fd7e7", 
       genome_build = "grch38"
@@ -226,7 +271,8 @@ variants_pruning_table <- tryCatch(lapply(
   mutate(Total = Kept + Removed),
   error = function(e) return(NA))
 
-kbl(variants_pruning_table, caption = paste0("Number of idependent variants (Kept) based on LDlink calculations on default parameters (R2 = ", r2_thresh, ", MAF = ", maf_thresh, "). The population chosen is 'CEU'. The sum of 'Kept' values represents the number of independent tests that need to be accounted for later on."))
+kbl(variants_pruning_table, caption = paste0("Number of idependent variants ('Kept') based on LDlink calculations on default parameters (R2 = ", r2_thresh, ", MAF = ", maf_thresh, "). The population chosen is 'CEU'. The sum of 'Kept' values represents the number of independent tests that need to be accounted for later on. NB: All variants will be tested, but the number of independent tests will be based on this 'Kept' column.")) %>% 
+  kable_styling()
 ```
 
 ```{r define number of tests to account for}
@@ -235,10 +281,14 @@ n_indep_variants <- ifelse(all(is.na(variants_pruning_table)), 6, sum(sapply(var
 
 ## Sample inclusion criteria and statistical modeling
 
-  - Collection method should not be `swab` 
-  - Available data for age, sequencing depth, microbiome PD cumulative scores, genetic data
+  - Available data for age, sequencing depth, microbiome PD cumulative scores (N unchanged)
+  
+  - Collection method should not be `swab` (N goes from  `r nrow(cluster_sums.df)` to `r nrow(samples_to_keep.df)`)
+  
+  - Available genetic data (N goes from `r nrow(samples_to_keep.df)` to `r nrow(data_alltogether.df)`)
 
-This results in `r nrow(data_alltogether.df)` samples for the analysis, with variant's distributions as follows:
+Below is some information of the variants associated with PD found in our 
+imputed genotypes.
 
 ```{r}
 cbind(data_alltogether.df %>% 
@@ -272,13 +322,29 @@ cbind(data_alltogether.df %>%
   column_spec(c(4,6,8), border_right = TRUE)
 ```
 
-Now perform the model with an interaction term between PD and each variant.
+
+## Q1 - Is there interaction between SNP variant dosage and PD status (case or control) on cluster abundance?
+
+Now perform the model with an interaction term between PD and each variant. 
+
+`NB`: E. coli clusters are calculated but not modeled because of the sample 
+collection and preservation methods: room temperature without buffer induced
+growth of *E. coli* (as well as other aerophilic and mesophilic bacteria, 
+potentially). This reduces the number of independent tests to adjust for.
+
+Also, one can argue that, since we did not see associations between variants and
+clusterSums other than Bifidos and Fiber degraders, that the replication 
+could be limited to 2 clusters. Same reasoning could go with variants that were
+never associated with any cluster. For future modifications, we report the raw 
+P-values in the associations table.
 
 $$
-ClusterSum_i \sim Age + Seq.Depth + PD + Variant_k + PD \times Variant_k
+Clustersum \sim Age + Seq.Depth + PD + VariantDosage_k + PD \times VariantDosage_k
 $$
 
-```{r}
+```{r bugs and genetics with lm}
+# Here you can choose to restrict your analysis to specific clusters
+clusters_to_test <- colnames(select(cluster_sums.df, -SubjectID, `E. coli-Klebsiella`))
 
 lm_results_interaction.df <- data_alltogether.df %>%
   pivot_longer(
@@ -287,7 +353,7 @@ lm_results_interaction.df <- data_alltogether.df %>%
     values_to = "dosage"
   ) %>%
   pivot_longer(
-    cols = colnames(select(cluster_sums.df, -SubjectID)), 
+    cols = clusters_to_test, 
     names_to = "clusterName",
     values_to = "clusterRelAb"
   ) %>% 
@@ -302,23 +368,24 @@ lm_results_interaction.df <- data_alltogether.df %>%
 
 
 # number of tests to correct for as bonferroni: number of cluster + variants tested
-n_tests <- length(unique(lm_results_interaction.df$clusterName)) * n_indep_variants
+n_tests <- length(clusters_to_test) * n_indep_variants
 
 lm_results_interaction_bonferoni.df <- lm_results_interaction.df %>% 
   mutate(
     p.adj_bonferroni = p.value * n_tests,
-    p.adj_bonferroni = ifelse(p.adj_bonferroni >1, 1, p.adj_bonferroni),
+    p.adj_bonferroni = ifelse(p.adj_bonferroni > 1, 1, p.adj_bonferroni),
     significant = ifelse(p.adj_bonferroni < 0.1, TRUE, FALSE)
   )
 
-write_tsv(lm_results_interaction_bonferoni.df, file = file.path(default_outdir, "01_lm_interaction_Variant.x.PD.tsv"))
+write_tsv(lm_results_interaction_bonferoni.df, file = file.path(default_outdir, "Q1", "01_lm_interaction_Variant.x.PD.tsv"))
 
 ```
 
-We correct p-values using the Bonferroni method accounting for `r 6` clusters tested
-against `r n_indep_variants` independent variants as defined above, for a total of `r n_tests` 
-independent tests. Then, we consider associations between clusters and variants 
-with `Adj. P-value < 0.05` as significant further annotating whether each association 
+We correct p-values using the Bonferroni method accounting for 
+`r length(clusters_to_test)` clusters tested against `r n_indep_variants` 
+independent variants as defined above, for a total of `r n_tests` independent 
+tests. Then, we consider associations between clusters and variants with 
+`Adj. P-value < 0.05` as significant further annotating whether each association 
 passed family-wise error rate adjustment.
 
 ```{r bugs and genetics results table}
@@ -330,11 +397,10 @@ lm_results_interaction_bonferoni.df %>%
   reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(variant = reactable::colDef(width = 200), term = reactable::colDef(width = 200)))
 ```
 
-## Visualization of variant-cluster associations with P-value < 0.05
-
-### Betas bar plots
+### Barplots of beta values assoc. with dosage only (blue) or dosage x PD (gold)
 
 ```{r}
+
 vgsub <- Vectorize(gsub)
 
 lm_results_interaction_bonferoni.df <- mutate(lm_results_interaction_bonferoni.df, term = vgsub("dosage", variant, term)) %>% 
@@ -345,34 +411,27 @@ data_plot.tmp <- lm_results_interaction_bonferoni.df %>%
   mutate(
     variant = str_extract(term, "chr.*"),
     PD = ifelse(grepl("PD", term), "PD", "Control"), 
-    term = NULL) %>% 
-  # used for older plot version, but good to keep for future uses
-  mutate(
-    color_manual = case_when(
-      p.adj_bonferroni < 0.1 & PD == "Control" ~ "skyblue3",
-      p.adj_bonferroni < 0.1 & PD == "PD" ~ "gold3",
-      p.adj_bonferroni >= 0.1 ~ "gray"
-  )
-  )
+    term = NULL) 
 
 plotly::ggplotly(
 ggplot() +
-  geom_col(data = data_plot.tmp, mapping = aes(x = variant, y = estimate, fill = PD)) +
+  geom_col(data = data_plot.tmp, mapping = aes(x = variant, y = estimate, fill = PD), position = position_dodge()) +
   geom_text(data = data_plot.tmp %>% filter(p.value < 0.05, p.adj_bonferroni >= 0.1), mapping = aes(x = variant, y = estimate, label = "*")) +
   geom_text(data = data_plot.tmp %>% filter(p.adj_bonferroni < 0.1), mapping = aes(x = variant, y = estimate, label = "**")) +
-  scale_fill_manual(values = c("gold3", "skyblue3")) +
+  scale_fill_manual(values = c("skyblue3", "gold3")) +
   facet_wrap(~ clusterName) +
   geom_hline(yintercept = 0, color = "gray30") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
   labs(
     y = "Beta estimates", 
-    title = "Full Betas range",
-    caption = "*: Nominal p-value < 0.05, **: Bonferroni-adjusted P-value < 0.1"
-  ), 
+    title = "Full Betas range"
+  ) 
 )
 ```
 
-### Boxplots of ClusterSum vs PD and variants (p-value < 0.05)
+Above is a barplot of beta estimates of bacterial clusters in relation to genotype dosages in the case of PD (gold) and health controls (blue). Significant associations were plotted as follows: * for p-value < 0.05, **: Bonferroni-adjusted P-value < 0.1.
+
+### Boxplots of ClusterSum abundance vs PD and variants (p-value < 0.05)
 
 Only a few associations are significant here. Below you can find all significant
 ones in boxplots taking into consideration genotypes and PD case/control status.
@@ -426,210 +485,529 @@ ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
   common.legend = TRUE)
 ```
 
-## Fold Change PD/healthy split by genotype dosage (0, 1, 2)
+## Q2 - is SNP VAF associated with cluster abundance in PD?
 
-Now we want to ask what is the fold change of a cluster (e.g. Fiber degraders)
-between PD and Controls having the same genotype. We would expect some fold changes
-to increase at increasing genotype, while adjusting for age and sequencing depth.
+Here the model is restricted to `PD` subjects, adjusting for the same
+set of confounders. See model below:
 
 $$
-ClusterSum_i \sim Age + Seq.Depth + PD
+ClusterSum_{PD} \sim Age_{PD} + Seq.Depth_{PD} + VariantDosage_{PD}
 $$
 
-And extract the Fold Change of each cluster for PD $FC_i = \frac{PD}{Ctrl}$. Here
-crude p-values are of interest, so we will not adjust them.
+Additional condition: We must have at least 5 participants carrying each genotype.
 
 ```{r}
-lm_split_by_variant_and_dosage <- data_alltogether.df %>%
+lm_results_in_PD.df <- data_alltogether.df %>%
+  filter(Case_status == "PD") %>% 
   pivot_longer(
     cols = colnames(select(per_sample_dosages.df, -SubjectID)), 
     names_to = "variant", 
     values_to = "dosage"
   ) %>%
   pivot_longer(
-    cols = colnames(select(cluster_sums.df, -SubjectID)), 
+    cols = clusters_to_test, 
     names_to = "clusterName",
     values_to = "clusterRelAb"
-  ) %>%
-  mutate(dosage = factor(round(dosage, 0))) %>%  # Convert dosage to a factor
-  group_by(clusterName, variant, dosage) %>%  # Group by clusterName, variant, and dosage
-  filter(sum(Case_status == "PD") >= 5 & sum(Case_status == "Control") >= 5) %>%  # Keep only groups with at least 2 observations
+  ) %>% 
+  group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
   group_modify(~ {
     # Apply linear model for each group and tidy the output
-    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status, data = .x)
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + dosage, data = .x)
     broom::tidy(lm_results)
   }) %>% 
   ungroup()
+
+write_tsv(lm_results_in_PD.df, file = file.path(default_outdir, "Q2", "01_lm_dosage_in_PD.tsv"))
 ```
 
-```{r table split results}
-signif_assocs <- lm_split_by_variant_and_dosage %>%
-  filter(term == "Case_statusPD", p.value < 0.1)
-  
-summary_table <- lm_split_by_variant_and_dosage %>% 
-  filter(term == "Case_statusPD") %>% 
-  mutate(
-    estimate_ci = sprintf("%.3f (%.3f, %.3f)", 
-                          estimate, 
-                          estimate - 1.96 * std.error, 
-                          estimate + 1.96 * std.error),
-    p_adj = sprintf("%.3e",p.value)
-  ) %>%
-  select(clusterName, variant, dosage, estimate_ci, p_adj) %>% 
-  pivot_wider(
-    names_from = dosage, 
-    values_from = c(estimate_ci, p_adj),
-    names_glue = "{.value}_{dosage}"
-  ) %>%
-  arrange(clusterName, variant) %>% 
-  .[,c(1,2,3,6,4,7,5,8)] %>% 
-  ungroup() %>% 
-  filter(as.numeric(p_adj_0) < 0.05 | as.numeric(p_adj_1) < 0.05 | as.numeric(p_adj_2) < 0.05) %>% 
-  mutate(
-    p_adj_0 = ifelse(as.numeric(p_adj_0) < 0.05, paste(p_adj_0, "*"), p_adj_0),
-    p_adj_1 = ifelse(as.numeric(p_adj_1) < 0.05, paste(p_adj_1, "*"), p_adj_1),
-    p_adj_2 = ifelse(as.numeric(p_adj_2) < 0.05, paste(p_adj_2, "*"), p_adj_2)
-  )
+## Q3 - is SNP VAF associated with cluster abundance in Controls?
 
-highlight_rows <- which(
-  as.numeric(gsub(" *", "", summary_table$p_adj_0, fixed = TRUE)) < 0.05 | 
-    as.numeric(gsub(" *", "", summary_table$p_adj_1, fixed = TRUE)) < 0.05 |
-    as.numeric(gsub(" *", "", summary_table$p_adj_2, fixed = TRUE)) < 0.05
-  )
+Here the model is restricted to `Control` subjects, adjusting for the same
+set of confounders. See model below:
 
+$$
+ClusterSum_{Control} \sim Age_{Control} + Seq.Depth_{Control} + VariantDosage_{Control}
+$$
 
-summary_table %>% 
-  as.matrix() %>% 
-  magrittr::set_colnames(c("clusterName", "variant", rep(c("Beta (95% C.I.)", "P.val"), 3))) %>%
-  
-  kable("html", caption = "Overview of clusters' associations with PD compared to Controls split by each variant's dosage. Only variants with at least 1 significant association in any of the 3 dosages were kept in the table. PD-cluster associations that passed Bonferroni test as shown above, were marked with an asterisk ('*') on the P.val column. 'Beta' values indicate the association between sex. The analysis was restricted to variants with at least 5 individuals with PD and 5 Controls in each dosage. NAs are cases where dosages did not have enough cases and controls to model.") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
-  add_header_above(c(" " = 2, "Dosage 0" = 2, "Dosage 1" = 2, "Dosage 2" = 2)) %>%
-  collapse_rows(columns = 1, valign = "top")
-```
+Additional condition: We must have at least 5 participants carrying each genotype.
 
 ```{r}
-lm_split_by_variant_and_dosage %>% 
-  filter(term == "Case_statusPD") %>% 
-  complete(clusterName, variant, dosage, fill = list(estimate = 0)) %>% 
-  ggplot(aes(x = variant, y = estimate, fill = dosage)) + 
-  geom_bar(stat = "identity", position = position_dodge()) + 
-  facet_wrap(~clusterName)+
-  scale_fill_brewer() +
-  geom_text(
-    data = lm_split_by_variant_and_dosage %>%
-      filter(term == "Case_statusPD", p.value < 0.5) %>%
-      complete(clusterName, variant, dosage, fill = list(estimate = 0)) %>%
-      mutate(yposit = sign(estimate)*(abs(estimate) + 0.01)), 
-    mapping = aes(x = variant, y = yposit, label = ifelse(p.value < 0.05, "*", ""), group = dosage), 
-            position = position_dodge(width = 1), size = 4) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "top") +
-  labs(
-    x = "Variant",
-    y = expression(Eff.~Size~(beta)),
-    fill = "Dosage"
-  )
+lm_results_in_Control.df <- data_alltogether.df %>%
+  filter(Case_status == "Control") %>% 
+  pivot_longer(
+    cols = colnames(select(per_sample_dosages.df, -SubjectID)), 
+    names_to = "variant", 
+    values_to = "dosage"
+  ) %>%
+  pivot_longer(
+    cols = clusters_to_test, 
+    names_to = "clusterName",
+    values_to = "clusterRelAb"
+  ) %>% 
+  group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
+  group_modify(~ {
+    # Apply linear model for each group and tidy the output
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + dosage, data = .x)
+    broom::tidy(lm_results)
+  }) %>% 
+  ungroup()
 
-
-write_tsv(lm_split_by_variant_and_dosage, file = file.path(default_outdir, "02_lm_by_genotype.tsv"))
-
+write_tsv(lm_results_in_Control.df, file = file.path(default_outdir, "Q3", "01_lm_dosage_in_Controls.tsv"))
 ```
 
-# Dirichlet Multinomial clustering correlates with Haydeh's picks?
 
-This is a Bayesian approach of clustering counts data, works pretty nicely, 
-assuming compositionality.
+# Approach 2 - Full MWAS followed by Gene Set Enrichment Analysis on same clusters
 
-```{r DirichletMultinomial calculation, eval=interactive()}
-library(DirichletMultinomial)
+**Hypothesis**: Summing bacterial abundances to generate clusters, followed by `lm`
+may introduce both biological and modeling biases. A possible biological bias
+could be that one bacterium is strongly affected by the interaction, but others 
+are only mildly, which would weaken the association. A technical bias could be 
+the non-normality and zero inflation of the outcome (bacterial clusters), which 
+with ordinary least squares regression could inflate type I or II errors 
+depending on the case. 
 
-counts_tab <- t(assay(UAB_data.mae, "metaphlan_Counts.se"))
+**Aim**: To test all bacteria individually for interaction with variant and PD, 
+annotating them later to each cluster.
 
-#' model up to 10 allowed clusters
-dmn_raw_output <- parallel::mclapply(
-  1:10 %>% set_names(paste("k =", .)),
-  function(n)
-    dmn(count = counts_tab, k = n, verbose = interactive(), seed = 2993), 
-  mc.cores = 8
-  )
+**Method**: Gene set enrichment analysis (GSEA) Takes the strength of assocation 
+between all bacteria/genes and an exposure (eg: interaction `PD x variant`), 
+ranks them from higher to lower, and tests whether it is more likely to find 
+more or less of them belonging to a grouping. This grouping could be fully agnostic
+(e.g.: pathways, taxa, metabolic functions) or could be manually annotated 
+(Haydeh's bacterial clusters). The more bacteria in the same cluster are in 
+extreme ranks (top or bottom), the more the bacterial cluster/gene set/pathway
+is significantly enriched or depleted, respectively. In practice, my approach is:
 
-dmn_outdir <- file.path(default_outdir, "DirichletMultinomial")
-dir.create(dmn_outdir, showWarnings = FALSE)
-saveRDS(dmn_raw_output, file = paste0(dmn_outdir, "/DMN_raw_output_", Sys.Date(), ".Rds"))
-```
+  1. [linDA](https://doi.org/10.1186/s13059-022-02655-5) to test **ALL** 
+  bacteria (prevalence >= 5%) for association with `variant x PD` interaction. 
+  2. Extract `t-statistic` as metrics for strength of association ($\beta$ 
+  estimates could work too, as well as $\beta \times -log_{10}Pvalue$)
+  3. Use [fgsea](https://doi.org/10.1101/060012) with statistic in `2.` and 
+  bacteria groupings (by Haydeh) to test for enrichment. fgsea is available in
+  [Bioconductor](https://bioconductor.org/packages/release/bioc/html/fgsea.html).
+
+## Q1 - Interaction PD x variant GSEA
+
+Significant associations in the `dosage:PD` term mean that the interaction between
+PD and genetic dosage is associated with bacterial abundance.
+
+Building on these results, a significant GSEA results for either of the clusters
+tested would mean that there is a number of bacteria enriched/depleted together 
+belonging to the same cluster.
 
 ```{r}
-k <- 6
-```
+samples_to_keep.df <- colData(UAB_data.mae[["metaphlan_RelAbund.se"]]) %>%
+  as.data.frame()
 
-Dirichlet components will be forced to have `r k` clusters. Although the 
-algorithm suggests 3 (The smaller the `laplace` estimate, the better the model).
+variants_to_keep_rowData.df <- as.data.frame(rowData(UAB_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(UAB_data.mae[["genotypes_dosages.se"]])$GENE),])
 
-```{r, eval=interactive()}
-
-laplace_values <- sapply(dmn_raw_output, BIC)
-plot(laplace_values, type = "b", col = "darkgray", xlab = "N. Dirichlet Components modeled", ylab = "BIC Fit evaluation")
-points(x = which.min(laplace_values), y = laplace_values[which.min(laplace_values)] , pch = 16, cex = 1.5)
-
-```
-
-```{r, eval=interactive()}
-#' find number of clusters with the least information (minimum of BIC curve)
-clusters_arbitraryN <- dmn_raw_output[[k]]
-
-CST_probs <- DirichletMultinomial::mixture(clusters_arbitraryN)
-
-CST_assigns <- as.character(apply(CST_probs, 1, function(x) {
-  best_x <- max(x)
-  second_best_x <- max(x[x != best_x])
-  CST_final <- ifelse(
-    best_x < 0.9 & (best_x - second_best_x) < 0.1, 
-    yes = paste(which(x == best_x), which(x == second_best_x), sep = "/"),
-    no = which(x == best_x)
-  )
-  
-  return(CST_final)
-}))
-
-CST_final <- cbind.data.frame(CST_assigns, CST_probs) %>% 
-  set_names(c("CST_assign", paste("CST", 1:ncol(CST_probs), "prob", sep = "_"))) %>% 
+per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
+  as.data.frame() %>% 
+  set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
   rownames_to_column("SubjectID")
 
-metadata_with_CST.df <- inner_join(CST_final, data_alltogether.df, by = "SubjectID")
-
-metadata_with_CST.df
-```
-
-
-```{r, eval=interactive()}
-ggarrange(
-  # plot fiber degraders
-ggplot(metadata_with_CST.df, aes(x = Case_status, y = `Fiber Degraders`, color = CST_assign)) + 
-  geom_point(position = position_jitterdodge(jitter.width = 0.1, seed = 1234)) +
-  geom_boxplot(outliers = FALSE, alpha = 0.4) ,
-  # plot Bifidobacteria
-ggplot(metadata_with_CST.df, aes(x = Case_status, y = Bifidobacteria, color = CST_assign)) + 
-  geom_point(position = position_jitterdodge(jitter.width = 0.1, seed = 1234)) +
-  geom_boxplot(outliers = FALSE, alpha = 0.4),
-
-ncol = 2, common.legend = TRUE
-) 
-
+meta_with_variants <- inner_join(per_sample_dosages.df, samples_to_keep.df, by = "SubjectID")
 
 ```
 
-As a quick look, Dirichlet components do not correlate well with clusters chosen
-by Haydeh.
-
-# Open Questions
-
-  - Do Fiber degraders correlate with fiber-rich diets?
-  - Do Bifidos correlate with lactose rich diets?
-  - Do Bifidos correlate with the variant in LCT gene? Do these people have it at 
-  all in the VCFs?
-  
-# R session
+### Regression 
 
 ```{r}
-sessionInfo()
+if(!("MicrobiomeStat" %in% installed.packages())){
+  install.packages("MicrobiomeStat")
+  }
+
+library(MicrobiomeStat)
+
+genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(meta_with_variants), value = TRUE), 
+       function(gt)
+       suppressMessages(linda(
+         feature.dat = assay(UAB_data.mae, "metaphlan_Counts.se")[,meta_with_variants$SubjectID],
+         meta.dat = meta_with_variants,
+  formula = paste("~ Age_at_collection + seqs_scaled + Case_status +", gt, "+", paste(gt, "Case_status", sep = "*")), 
+  p.adj.method = "BH",
+  corr.cut = 0.1,
+  outlier.pct = 0.03, 
+  alpha = 0.1,
+  prev.filter = 0.05,
+  verbose = FALSE
+  )),
+  USE.NAMES = TRUE,
+  simplify = FALSE
+  )
+
+linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply(function(x) x[grepl("chr", names(x))] %>% set_names(c("variantOnly", "interactionPD")) %>% lapply(rownames_to_column, "taxon")) %>% 
+  lapply(bind_rows, .id = "covariate") %>% 
+  bind_rows(.id = "variantName")
+
+write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q1", "02_LinDA_regression_dosage.x.PD_FullResults.tsv"))
 ```
+
+### GSEA on variant-PD interactions {.tabset}
+
+```{r}
+# fgsea on variant only effects
+variant_PD_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply("[[", 5) %>% 
+  lapply(function(x) set_names(x$stat, rownames(x)))
+
+library(fgsea)
+
+gsea_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) 
+                               fgsea(
+  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
+  stats = stats)) %>% 
+  lapply(function(x){
+    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+    x <- rename(x, microbial_cluster = pathway)
+    return(x)
+  })
+
+gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant") %>% 
+
+write_tsv(gsea_on_variant_PD_nice.df, path = file.path(default_outdir, "Q1", "03_full_GSEA_results_interaction.tsv"))
+```
+
+```{r, results="asis"}
+gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+
+for (i in names(gsea_on_variant_PD_someSignif)) {
+    cat("\n####", i, sep = " ")
+      
+    cat("\n")
+    
+    variants_to_keep_rowData.df %>%
+      filter(POS == strsplit(i, "_")[[1]][2]) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
+      kbl() %>%
+      print()
+    
+    cat("\n")
+    
+    print(
+      plotGseaTable(
+      pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
+      stats = variant_PD_t_stat[[i]],
+      fgseaRes = gsea_on_variant_PD_someSignif[[i]])
+      )
+    cat("\n")
+}
+```
+
+### {-}
+
+### GSEA on variant-only effects {.tabset}
+
+These results confirm our findings above, showing the tendency of enrichment of 
+Fiber Degraders in case of dosage only effect, while for the same variant, there 
+is an opposite trend. 
+
+This is particularly visible in variant `rs983361`, named chr4_89840793
+
+```{r}
+# fgsea on variant only effects
+variant_only_t_stats <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply("[[", 4) %>% 
+  lapply(function(x) set_names(x$stat, rownames(x)))
+
+library(fgsea)
+
+gsea_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) 
+                               fgsea(
+  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
+  stats = stats)) %>% 
+  lapply(function(x){
+    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+    x <- rename(x, microbial_cluster = pathway)
+    return(x)
+  })
+
+gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant") %>% 
+
+write_tsv(gsea_on_variant_PD_nice.df, path = file.path(default_outdir, "Q1", "03_full_GSEA_results_interaction.tsv"))
+
+```
+
+```{r, results="asis"}
+gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+
+for (i in names(gsea_on_variant_PD_someSignif)) {
+    cat("\n####", i, sep = " ")
+      
+    cat("\n")
+    
+    variants_to_keep_rowData.df %>%
+      filter(POS == strsplit(i, "_")[[1]][2]) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
+      kbl() %>%
+      print()
+    
+    cat("\n")
+    
+    print(
+      plotGseaTable(
+      pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
+      stats = variant_only_t_stats[[i]],
+      fgseaRes = gsea_on_variant_PD_someSignif[[i]])
+      )
+    cat("\n")
+}
+```
+
+### {-}
+
+## Q2 - Variant-bacteria association in PD
+
+```{r}
+samples_to_keep.df <- colData(UAB_data.mae[["metaphlan_RelAbund.se"]]) %>%
+  as.data.frame() 
+
+variants_to_keep_rowData.df <- as.data.frame(rowData(UAB_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(UAB_data.mae[["genotypes_dosages.se"]])$GENE),])
+
+per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
+  as.data.frame() %>% 
+  set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
+  rownames_to_column("SubjectID")
+
+meta_with_variants <- inner_join(per_sample_dosages.df, samples_to_keep.df, by = "SubjectID") %>% 
+  filter(Case_status == "PD")
+
+```
+
+### Regression 
+
+```{r}
+if(!("MicrobiomeStat" %in% installed.packages())){
+  install.packages("MicrobiomeStat")
+  }
+
+library(MicrobiomeStat)
+
+genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(meta_with_variants), value = TRUE), 
+       function(gt)
+       suppressMessages(linda(
+         feature.dat = assay(UAB_data.mae, "metaphlan_Counts.se")[,meta_with_variants$SubjectID],
+         meta.dat = meta_with_variants,
+  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
+  p.adj.method = "BH",
+  corr.cut = 0.1,
+  outlier.pct = 0.03, 
+  alpha = 0.1,
+  prev.filter = 0.05,
+  verbose = FALSE
+  )),
+  USE.NAMES = TRUE,
+  simplify = FALSE
+  )
+
+linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply(function(x) x[grepl("chr", names(x))] %>% set_names("variantOnly") %>% lapply(rownames_to_column, "taxon")) %>% 
+  lapply(bind_rows, .id = "covariate") %>% 
+  bind_rows(.id = "variantName")
+
+write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q2", "02_LinDA_regression_dosage_in_PD.tsv"))
+```
+
+### GSEA on variant effect {.tabset}
+
+```{r}
+# fgsea on variant only effects
+variant_PD_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply("[[", 3) %>% 
+  lapply(function(x) set_names(x$stat, rownames(x)))
+
+library(fgsea)
+
+gsea_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) 
+                               fgsea(
+  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
+  stats = stats)) %>% 
+  lapply(function(x){
+    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+    x <- rename(x, microbial_cluster = pathway)
+    return(x)
+  })
+
+gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant")
+
+write_tsv(gsea_on_variant_PD_nice.df, path = file.path(default_outdir, "Q2", "03_full_GSEA_results_variant_in_PD.tsv"))
+```
+
+```{r, results="asis"}
+gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+
+for (i in names(gsea_on_variant_PD_someSignif)) {
+    cat("\n####", i, sep = " ")
+      
+    cat("\n")
+    
+    variants_to_keep_rowData.df %>%
+      filter(POS == strsplit(i, "_")[[1]][2]) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
+      kbl() %>%
+      print()
+    
+    cat("\n")
+    
+    print(
+      plotGseaTable(
+      pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
+      stats = variant_PD_t_stat[[i]],
+      fgseaRes = gsea_on_variant_PD_someSignif[[i]])
+      )
+    cat("\n")
+}
+```
+
+### {-}
+
+## Q3 - Variant-bacteria association in Controls
+
+```{r}
+samples_to_keep.df <- colData(UAB_data.mae[["metaphlan_RelAbund.se"]]) %>%
+  as.data.frame() 
+
+variants_to_keep_rowData.df <- as.data.frame(rowData(UAB_data.mae[["genotypes_dosages.se"]])[grepl("HLA|SNCA", rowData(UAB_data.mae[["genotypes_dosages.se"]])$GENE),])
+
+per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rownames(variants_to_keep_rowData.df)] %>% 
+  as.data.frame() %>% 
+  set_names(paste(variants_to_keep_rowData.df$CHROM, variants_to_keep_rowData.df$POS, variants_to_keep_rowData.df$REF, variants_to_keep_rowData.df$ALT, sep = "_")) %>% 
+  rownames_to_column("SubjectID")
+
+meta_with_variants <- inner_join(per_sample_dosages.df, samples_to_keep.df, by = "SubjectID") %>% 
+  filter(Case_status == "Control")
+
+```
+
+### Regression 
+
+```{r}
+if(!("MicrobiomeStat" %in% installed.packages())){
+  install.packages("MicrobiomeStat")
+  }
+
+library(MicrobiomeStat)
+
+genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(meta_with_variants), value = TRUE), 
+       function(gt)
+       suppressMessages(linda(
+         feature.dat = assay(UAB_data.mae, "metaphlan_Counts.se")[,meta_with_variants$SubjectID],
+         meta.dat = meta_with_variants,
+  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
+  p.adj.method = "BH",
+  corr.cut = 0.1,
+  outlier.pct = 0.03, 
+  alpha = 0.1,
+  prev.filter = 0.05,
+  verbose = FALSE
+  )),
+  USE.NAMES = TRUE,
+  simplify = FALSE
+  )
+
+linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply(function(x) x[grepl("chr", names(x))] %>% set_names("variantOnly") %>% lapply(rownames_to_column, "taxon")) %>% 
+  lapply(bind_rows, .id = "covariate") %>% 
+  bind_rows(.id = "variantName")
+
+write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q3", "02_LinDA_regression_dosage_in_Controls.tsv"))
+```
+
+### GSEA on variant effect {.tabset}
+
+```{r}
+# fgsea on variant only effects
+variant_Control_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  lapply("[[", 3) %>% 
+  lapply(function(x) set_names(x$stat, rownames(x)))
+
+library(fgsea)
+
+gsea_on_variant_Control <- lapply(variant_Control_t_stat, function(stats) 
+                               fgsea(
+  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
+  stats = stats)) %>% 
+  lapply(function(x){
+    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+    x <- rename(x, microbial_cluster = pathway)
+    return(x)
+  })
+
+gsea_on_variant_Control_nice.df <- bind_rows(gsea_on_variant_Control, .id = "snp_variant")
+
+write_tsv(gsea_on_variant_Control_nice.df, path = file.path(default_outdir, "Q3", "03_full_GSEA_results_variant_in_Controls.tsv"))
+```
+
+```{r, results="asis"}
+gsea_on_variant_Control_someSignif <- gsea_on_variant_Control[sapply(gsea_on_variant_Control, function(x) any(x$padj < 0.05))]
+
+for (i in names(gsea_on_variant_Control_someSignif)) {
+    cat("\n####", i, sep = " ")
+      
+    cat("\n")
+    
+    variants_to_keep_rowData.df %>%
+      filter(POS == strsplit(i, "_")[[1]][2]) %>%
+      select(CHROM, POS, REF, ALT, RSID, GENE, IMPUTED = INFO_IMPUTED, R2 =  INFO_R2) %>%
+      kbl() %>%
+      print()
+    
+    cat("\n")
+    
+    print(
+      plotGseaTable(
+      pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
+      stats = variant_Control_t_stat[[i]],
+      fgseaRes = gsea_on_variant_Control_someSignif[[i]])
+      )
+    cat("\n")
+}
+```
+
+### {-}
+
+# Old code, re-do for each question 
+## LinDA on SNCA and HLA
+
+The model done here is identical to the first approach:
+
+$$
+Bacterium_i \sim Age + Seq.Depth + PD + Variant_k + PD \times Variant_k
+$$
+
+And we extract coefficients (logFC) in relation to **dosage only** and 
+**dosage in PD** to perform GSEA using Haydeh's clusters
+
+
+
+
+
+
+
+# Approach 2.5 - GSEA on attributes found in `bugphyzz` (WIP)
+
+This approach is even more unbiased. The analysis is based on their vignette.
+(https://www.bioconductor.org/packages/release/data/experiment/vignettes/bugphyzz/inst/doc/bugphyzz.html)
+
+```{r}
+# BiocManager::install("bugphyzz") 
+library(bugphyzz)
+bp <- importBugphyzz()
+
+names(bp)
+```
+
+There are many `data.frame`s with bug classification, with some overlap expected.
+These sets can be used to test enrichment of a particular trait. In particular,
+aerophilicity, gram staining, pathogenicity and butyrate production could be 
+of interest.
+
+Mapping can be done using `Taxon_name` and `Rank`
+
+```{r}
+bp$`butyrate-producing bacteria`
+
+```
+
+As can be seen, the list is not too large, in this case, and mapping is hard.
