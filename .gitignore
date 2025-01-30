@@ -1,5 +1,5 @@
 # first ignore genetic data
-Data/GWAS_catalog_PD_variants/queried_variants_PD/
+Data/GWAS_catalog_PD_variants/queried_variants_PD
 
 Data/GWAS_catalog_PD_variants/*.RData
 
@@ -7,7 +7,7 @@ Data/GWAS_catalog_PD_variants/*.RData
 Data/*.RData
 Data/*.Rdata
 Data/*.rdata
-Data/*RDS
+Data/*.RDS
 Data/*.Rds
 Data/*.rds
 

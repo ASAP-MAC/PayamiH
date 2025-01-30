@@ -69,10 +69,10 @@ rm(BioC_required_packages,CRAN_required_packages)
 gc(verbose = FALSE)
 ```
 
-Below is the data sources for Wallen et al. 2022 (Nat Comms). Data have been 
+Below is the data for the DoD dataset. Data have been 
 further prepared by Giacomo to make one single data object that would hopefully, 
 speed up the preparation phase. This data object contains microbiome, pathway, 
-participants data and genetic data.
+participants metadata and genetic data.
 
 ```{r}
 DoD_data.mae
@@ -158,30 +158,48 @@ full_join(n_all_species, n_mapped_species, by = "cluster_name") %>%
 
 ```
 
-These variables are far from normal, and log transformation does not help.
+These variables are far from normal, and log transformation does not help. Maybe
+center-log ratio could help, but it can introduce biases on low-abundance bacteria
+and clusters.
 
-```{r, fig.cap= "Distribution of cumulative sum of relative abundances of cluster member species."}
-cluster_sums.df %>% 
-  select(-SubjectID) %>% 
-  reshape2::melt() %>% 
-  mutate(
-    log2Transf = log2(value + 1),
-    sq.root = sqrt(value)
-    ) %>% 
-  reshape2::melt(
-    variable.name = "Transformation"
-    ) %>% 
-  mutate(
-    Transformation = case_when(
-      Transformation == "value" ~ 'untransformed',
-      Transformation == "log2Transf" ~ 'log2',
-      Transformation == "sq.root" ~ 'sq.root',
-      TRUE ~ 'error'
-      )
-    ) %>% 
-  ggplot(aes(x = value, color = Transformation)) + 
-  geom_histogram(fill = "transparent") + 
-  facet_wrap(~variable) 
+```{r, fig.cap= "Distribution of cumulative sum of relative abundances of cluster member species.", fig.height=6, fig.width=8}
+cluster_sums_raw.mtx <-  cluster_sums.df %>%
+  column_to_rownames("SubjectID") %>% 
+  as.matrix() %>% 
+  reshape2::melt(value.name = "raw")
+
+cluster_sums_sqrt.mtx <-  cluster_sums.df %>%
+  column_to_rownames("SubjectID") %>%
+  apply(2, sqrt) %>% 
+  reshape2::melt(value.name = "sqrt")
+
+cluster_sums_log.mtx <-  cluster_sums.df %>%
+  column_to_rownames("SubjectID") %>%
+  apply(2, function(x) (log(x + 1))) %>% 
+  reshape2::melt(value.name = "log_plus_1")
+
+cluster_sums_clr.df <-  cluster_sums.df %>%
+  column_to_rownames("SubjectID") %>%
+  apply(2, compositions::clr) %>% 
+  reshape2::melt(value.name = "clr")
+
+data_transf_together <- inner_join(cluster_sums_raw.mtx, cluster_sums_sqrt.mtx, by = c("Var1", "Var2")) %>% 
+  inner_join(cluster_sums_log.mtx, by = c("Var1", "Var2")) %>% 
+  inner_join(cluster_sums_clr.df, by = c("Var1", "Var2")) %>% 
+  rename(
+    SubjectID = Var1,
+    clusterName = Var2
+  )
+
+data_transf_together %>% 
+  pivot_longer(cols = colnames(data_transf_together)[3:ncol(data_transf_together)], 
+               names_to = "Transform", values_to = "transf_abund") %>% 
+  mutate(Transform = factor(Transform, levels = colnames(data_transf_together)[3:ncol(data_transf_together)])) %>% 
+  ggplot(aes(y = transf_abund, color = clusterName)) +
+  geom_boxplot(fill = "transparent") +
+  scale_color_manual(values = ggsci::pal_jco()(6)) +
+  facet_wrap(~ Transform, scale = "free_y")
+
 ```
 
 ## Define variants of interest and number of independent variants tested
@@ -391,12 +409,13 @@ lm_results_interaction.df %>%
   arrange(desc(abs(estimate))) %>% 
   select(-statistic) %>% 
   mutate_if(is.numeric, round, 4) %>% 
-  reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(variant = reactable::colDef(width = 200), term = reactable::colDef(width = 200)))
+  reactable::reactable(filterable = TRUE, searchable = TRUE, sortable = TRUE, columns = list(clusterName = reactable::colDef(width = 180), variant = reactable::colDef(width = 180), term = reactable::colDef(width = 180)))
 ```
 
 ### Barplots of beta values assoc. with dosage only (blue) or dosage x PD (gold)
 
-```{r}
+```{r, fig.cap="Barplots of beta estimates of bacterial clusters in relation to genotype dosages in the case of PD (gold) and health controls (blue). Significant associations were plotted as follows: * for p-value < 0.05, **: Bonferroni-adjusted P-value < 0.1."}
+
 
 vgsub <- Vectorize(gsub)
 
@@ -425,8 +444,6 @@ ggplot() +
   ) 
 )
 ```
-
-Above is a barplot of beta estimates of bacterial clusters in relation to genotype dosages in the case of PD (gold) and health controls (blue). Significant associations were plotted as follows: * for p-value < 0.05, **: Bonferroni-adjusted P-value < 0.1.
 
 ### Boxplots of ClusterSum abundance vs PD and variants (p-value < 0.05)
 
@@ -539,7 +556,8 @@ lm_results_in_PD.df %>%
     searchable = TRUE,
     sortable = TRUE,
     columns = list(
-      variant = reactable::colDef(width = 200)
+      clusterName = reactable::colDef(width = 180),
+      variant = reactable::colDef(width = 150)
     )
   )
 ```
@@ -601,7 +619,8 @@ lm_results_in_Control.df %>%
     searchable = TRUE,
     sortable = TRUE,
     columns = list(
-      variant = reactable::colDef(width = 200)
+      clusterName = reactable::colDef(width = 180),
+      variant = reactable::colDef(width = 150)
     )
   )
 ```
@@ -639,6 +658,17 @@ is significantly enriched or depleted, respectively. In practice, my approach is
 
 **NB: Only variants with at least 1 significantly enriched cluster are shown.**
 **Significance is defined as FDR P-value < 0.05**
+
+```{r}
+prevalence_curve <- assay(DoD_data.mae, "metaphlan_Counts.se") %>% microbiome::prevalence() %>% sort(decreasing = TRUE) 
+```
+
+Also, filtering by prevalence results in considerable loss of taxa: 
+`r sum(prevalence_curve >= 0.05)` are retained, `r sum(prevalence_curve < 0.05)` 
+are discarded. Note that **metaphlan_Counts** have 1 extra taxon compared to 
+`metaphlan_RelAbund`, that is the `UNKNOWN` taxa. This will be modeled too and 
+used as control, as we generally expect UNKNOWN taxa to encompass too many taxa 
+to return a clean signal.
 
 ## Q1 - Interaction PD x variant GSEA
 
@@ -688,6 +718,7 @@ write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_
 ```{r}
 # fgsea on variant only effects
 variant_PD_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") %>% 
+  #this index must be checked in case the formula in the modeling chunk above gets changed
   lapply("[[", 5) %>% 
   lapply(function(x) set_names(x$stat, rownames(x)))
 
@@ -921,7 +952,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q3", "02_LinDA_regression_dosage_in_Controls.tsv"))
 ```
 
-### GSEA on variant effect {.tabset}
+### GSEA on variant effect in PD {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -975,7 +1006,6 @@ for (i in names(gsea_on_variant_Control_someSignif)) {
 
 ### {-}
 
-
 # Results highlights
 
   - In the interaction model using clusterSums, the DoD dataset show 2 interesting
@@ -991,7 +1021,6 @@ Gene set enrichment highlighted more associations than linear models did:
 
 Variant chr6_32698883 shows enrichment of Fiber degraders controls but not in PD,
 as well as chr4_89840793 (aka **our top variant**).
-
 
 Overall, we are seeing a complex interplay, that is more easily seen in gene 
 set enrichment analyses. More generally, trends visible in controls are not visible
@@ -1018,7 +1047,8 @@ These sets can be used to test enrichment of a particular trait. In particular,
 aerophilicity, gram staining, pathogenicity and butyrate production could be 
 of interest.
 
-Mapping can be done using `Taxon_name` and `Rank`
+Mapping can be done using `Taxon_name` and `Rank`, but it requires a lot of 
+manual curation form the user point of view.
 
 ```{r}
 bp$`butyrate-producing bacteria`
@@ -1026,3 +1056,66 @@ bp$`butyrate-producing bacteria`
 ```
 
 As can be seen, the list is not too large, in this case, and mapping is hard.
+
+# Future directions
+
+## Increase set of variants to be tested
+
+### FoxDen
+
+```{r}
+snp_data <- data.frame(
+  rsID = c("rs11610045", "rs4698412", "rs823118", "rs11658976", "rs356182", 
+             "rs2280104", "rs12456492", "rs11158026", "rs9261484", "rs10513789", 
+             "rs76904798", "rs10797576", "rs2230288", "rs34637584", "rs80356773", 
+             "rs34424986", "rs76763715"),
+  Chromosome = c(12, 4, 1, 17, 4, 8, 18, 14, 6, 3, 12, 1, 1, 12, 1, 6, 1),
+  Position = c(133063768, 15735148, 204929729, 46926463, 89724099, 
+                      22642927, 43093415, 54851089, 30114775, 182762437, 
+                      40614434, 232664611, 155235252, 40734202, 155235843, 
+                      161768452, 155236246),
+  Gene = c(
+    "FBRSL1",
+    "BST1",
+    "NUCKS1",
+    "WNT3",
+    "SNCA",
+    "BIN3",
+    "RIT2",
+    "GCH1",
+    "TRIM40",
+    "MCCC1",
+    "LRRK2",
+    "SIPA1L2",
+    "GBA",
+    "LRRK2",
+    "GBA",
+    "PARK2",
+    "GBA"
+  )
+) %>% 
+  mutate(
+    AltName = ifelse(rsID == "rs76763715", "i4000415", ""),
+    AlreadyInList = ifelse((rsID %in% rownames(rowData(DoD_data.mae[["genotypes_dosages.se"]]))) | (AltName %in% rownames(rowData(DoD_data.mae[["genotypes_dosages.se"]]))), "yes", "no")
+  ) %>% 
+  arrange(AlreadyInList)
+
+kbl(snp_data, caption = "List of variants found in FoxDen data repository. Grayed rows indicate variants already in our selection criteria in the GWAS catalog. Variants grayed") %>% 
+  kable_styling() %>% 
+  row_spec(row = grep("yes", snp_data$AlreadyInList), color = "gray")
+```
+
+## Big table in Nalls et al. 2024, Lancet Neurology
+
+Reference is [here](https://doi.org/10.1016/S1474-4422(19)30320-5)
+
+```{r}
+dataTable <- readxl::read_xlsx("../Data/GWAS_catalog_PD_variants/Nalls_2023_Table1Variants.xlsx") %>% 
+  mutate(AlreadyInList = ifelse(rsID %in% rownames(rowData(DoD_data.mae[["genotypes_dosages.se"]])), "yes", "no")) %>% 
+  arrange(AlreadyInList) 
+
+kbl(dataTable, caption = "List of variants associated with PD reported as 'novel' in a mega GWAS by the authors in Nalls E.A. et al, 2024 (https://doi.org/10.1016/S1474-4422(19)30320-5). Grayed rows indicate variants already in our selection criteria in the GWAS catalog. Variants grayed. Input table was semi-automatically extracted fromTable 1 of the publication, mistakes cannot be excluded.") %>% 
+  kable_styling() %>% 
+  row_spec(row = grep("yes", dataTable$AlreadyInList), color = "gray")
+```
+
