@@ -722,7 +722,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q1", "02_LinDA_regression_dosage.x.PD_FullResults.tsv"))
 ```
 
-### GSEA on interaction effects from interaction model {.tabset}
+### GSEA plot on interaction effects from interaction model {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -780,7 +780,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
 
 ### {-}
 
-### GSEA on variant-only effects from interaction model {.tabset}
+### GSEA plot on variant-only effects from interaction model {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -871,7 +871,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q2", "02_LinDA_regression_dosage_in_PD.tsv"))
 ```
 
-### GSEA on variant effect in PD {.tabset}
+### GSEA plot on variant effect in PD {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -961,7 +961,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q3", "02_LinDA_regression_dosage_in_Controls.tsv"))
 ```
 
-### GSEA on variant effect in Control {.tabset}
+### GSEA plot on variant effect in Controls {.tabset}
 
 ```{r}
 # fgsea on variant only effects
