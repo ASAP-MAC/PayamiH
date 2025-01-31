@@ -14,6 +14,8 @@ This note is specific to the CLR branch.
 I apply CLR to data at the **Q1** stage. However, Q2 and Q3 further subset data, which could 
 prove problematic? we should discuss.
 
+Additionally I have branched RelAbund as well, to keep the main branch as clean as possible
+
 # 01-27-2025
 
 After multiple iterations, we are now going for the following 3 research questions:
