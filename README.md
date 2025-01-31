@@ -1,3 +1,15 @@
+# 01-31-2025
+
+This major rebumping of the reports includes the following changes:
+	
+	* Added "Future directions" chapter to reports for all 3 datasets
+
+	* Added `stool_travel_time` as covariate only to NGRC and UAB, to account for
+	  the time these samples have been in room temperature
+
+After these modifications, I was asked to analyses of approach 1 with `CLR` transformed traits. 
+To do that, I will branch the repository.
+
 # 01-27-2025
 
 After multiple iterations, we are now going for the following 3 research questions:

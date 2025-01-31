@@ -1,6 +1,5 @@
 ---
-title: "PD, microbiome and host genetics on SNCA and HLA variants"
-subtitle: "Data: NGRC"
+title: "PD, microbiome and host genetics on SNCA and HLA variants on NGRC"
 author: "Giacomo Antonello, Zachary D. Wallen, Charles F. Murchinson, Levi Waldron, Haydeh Payami"
 date: "`r Sys.Date()`"
 output:
@@ -127,6 +126,7 @@ cluster_sums.df <- left_join(
 cluster_sums.df %>% 
   mutate_if(is.numeric, round, 3) %>% 
 datatable(caption = "Snippet of values obtained with the sum method across clusters. These will be the variables we will use to test association with variants' dosages")
+
 ```
 
 For each cluster, see how many species were correctly mapped to the NGRC dataset.
@@ -202,7 +202,7 @@ data_transf_together %>%
 
 ```
 
-## Define variants of interest and number of independent variants tested
+## Define variants and samples to test, and multiple testing cost
 
 Genetic variants were included if retained if:
 
@@ -301,7 +301,7 @@ n_indep_variants <- ifelse(all(is.na(variants_pruning_table)), 6, sum(sapply(var
 # Here you can choose to restrict your analysis to specific clusters
 clusters_to_test <- colnames(select(cluster_sums.df, -SubjectID))
 n_tests <- length(clusters_to_test) * n_indep_variants
-
+  
 cbind(
   c(
     "Intependent Variants",
@@ -316,9 +316,8 @@ cbind(
 
 ## Sample inclusion criteria and statistical modeling
 
-  - Available data for age, sequencing depth, microbiome PD cumulative scores (N unchanged)
-  
-  - Collection method should not be `swab` (N goes from  `r nrow(cluster_sums.df)` to `r nrow(samples_to_keep.df)`)
+  - Available data for age, sequencing depth, microbiome PD cumulative scores 
+  (N unchanged)
   
   - Available genetic data (N goes from `r nrow(samples_to_keep.df)` to `r nrow(data_alltogether_Q1.df)`)
 
@@ -370,6 +369,8 @@ that the replication could be limited to 2 clusters. Same reasoning could go
 with variants that were never associated with any cluster. For future 
 modifications, we report the raw P-values in the associations table.
 
+
+
 $$
 Clustersum \sim Age + Seq.Depth + PD + VariantDosage_k + PD \times VariantDosage_k
 $$
@@ -388,10 +389,9 @@ lm_results_interaction.df <- data_alltogether_Q1.df %>%
     values_to = "clusterRelAb"
   ) %>% 
   group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
-#  filter(sum(Case_status == "PD") >= 5 & sum(Case_status == "Control") >= 5) %>%  # Keep only groups with at least 5 observations
   group_modify(~ {
     # Apply linear model for each group and tidy the output
-    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + Case_status + dosage + dosage*Case_status, data = .x)
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + stool_travel_time + Case_status + dosage + dosage*Case_status, data = .x)
     broom::tidy(lm_results)
   }) %>% 
   ungroup() %>% 
@@ -456,14 +456,16 @@ ggplot() +
 
 ### Boxplots of ClusterSum abundance vs PD and variants (p-value < 0.05)
 
-Only a few associations are significant here. Below you can find all significant
-ones in boxplots taking into consideration genotypes and PD case/control status.
-Plots are sorted by decreasing absolute $\beta$ values.
+Boxplots of associations with raw p-value , 0.05 (if any). If not, this step
+will be skipped.
 
-```{r, fig.height=12, fig.width=8}
+```{r}
 plot_top_assoc <- lm_results_interaction.df %>%
   filter(grepl("chr[0-9]", term), p.value < 0.05) %>% 
   arrange(desc(abs(estimate)))
+```
+
+```{r, eval = nrow(plot_top_assoc) > 0, fig.height=12, fig.width=8}
 
 ggarrange(plotlist = lapply(1:nrow(plot_top_assoc), function(i) {
   clst <- plot_top_assoc$clusterName[i]
@@ -523,9 +525,8 @@ data_alltogether_Q2.df <- filter(data_alltogether_Q1.df, Case_status == "PD")
 
 ```{r}
 lm_results_in_PD.df <- data_alltogether_Q2.df %>%
-  filter(Case_status == "PD") %>% 
   pivot_longer(
-    cols = colnames(select(per_sample_dosages.df, -SubjectID)), 
+    cols = starts_with("chr"), 
     names_to = "variant", 
     values_to = "dosage"
   ) %>%
@@ -537,7 +538,7 @@ lm_results_in_PD.df <- data_alltogether_Q2.df %>%
   group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
   group_modify(~ {
     # Apply linear model for each group and tidy the output
-    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + dosage, data = .x)
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + stool_travel_time + dosage, data = .x)
     broom::tidy(lm_results)
   }) %>% 
   ungroup() %>% 
@@ -586,9 +587,8 @@ data_alltogether_Q3.df <- filter(data_alltogether_Q1.df, Case_status == "Control
 
 ```{r}
 lm_results_in_Control.df <- data_alltogether_Q3.df %>%
-  filter(Case_status == "Control") %>% 
   pivot_longer(
-    cols = colnames(select(per_sample_dosages.df, -SubjectID)), 
+    cols = starts_with("chr"), 
     names_to = "variant", 
     values_to = "dosage"
   ) %>%
@@ -600,7 +600,7 @@ lm_results_in_Control.df <- data_alltogether_Q3.df %>%
   group_by(clusterName, variant) %>%  # Group by clusterName, variant, and dosage
   group_modify(~ {
     # Apply linear model for each group and tidy the output
-    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + dosage, data = .x)
+    lm_results <- lm(clusterRelAb ~ Age_at_collection + seqs_scaled + stool_travel_time + dosage, data = .x)
     broom::tidy(lm_results)
   }) %>% 
   ungroup() %>% 
@@ -702,7 +702,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[, data_alltogether_Q1.df$SubjectID],
          meta.dat = data_alltogether_Q1.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + Case_status +", gt, "+", paste(gt, "Case_status", sep = "*")), 
+  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + Case_status +", gt, "+", paste(gt, "Case_status", sep = "*")), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -851,7 +851,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[,data_alltogether_Q2.df$SubjectID],
          meta.dat = data_alltogether_Q2.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
+  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + ", gt), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -941,7 +941,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[,data_alltogether_Q3.df$SubjectID],
          meta.dat = data_alltogether_Q3.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
+  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + ", gt), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -1017,28 +1017,81 @@ for (i in names(gsea_on_variant_Control_someSignif)) {
 
 # Results highlights
 
-# Approach 2.5 - GSEA on attributes found in `bugphyzz` (WIP)
 
-This approach is even more unbiased. The analysis is based on their vignette.
-(https://www.bioconductor.org/packages/release/data/experiment/vignettes/bugphyzz/inst/doc/bugphyzz.html)
+# Future directions
+
+## Find other bacteria clusters from other sources (e.g. `bugphyzz`)
 
 ```{r}
 # BiocManager::install("bugphyzz") 
 library(bugphyzz)
 bp <- importBugphyzz()
 
-names(bp)
+tibble(
+  "Metabolic trait" = names(bp),
+  "Number of bacteria in BugPhyzz" = sapply(bp, nrow)
+           ) %>% 
+  arrange(desc(`Number of bacteria in BugPhyzz`)) %>% 
+  reactable::reactable(searchable = TRUE, filterable = TRUE)
 ```
 
-There are many `data.frame`s with bug classification, with some overlap expected.
-These sets can be used to test enrichment of a particular trait. In particular,
-aerophilicity, gram staining, pathogenicity and butyrate production could be 
-of interest.
 
-Mapping can be done using `Taxon_name` and `Rank`, but it requires a lot of 
-manual curation form the user point of view.
+## Increase set of variants to be tested
+
+### FoxDen
 
 ```{r}
-bp$`butyrate-producing bacteria`
+snp_data <- data.frame(
+  rsID = c("rs11610045", "rs4698412", "rs823118", "rs11658976", "rs356182", 
+             "rs2280104", "rs12456492", "rs11158026", "rs9261484", "rs10513789", 
+             "rs76904798", "rs10797576", "rs2230288", "rs34637584", "rs80356773", 
+             "rs34424986", "rs76763715"),
+  Chromosome = c(12, 4, 1, 17, 4, 8, 18, 14, 6, 3, 12, 1, 1, 12, 1, 6, 1),
+  Position = c(133063768, 15735148, 204929729, 46926463, 89724099, 
+                      22642927, 43093415, 54851089, 30114775, 182762437, 
+                      40614434, 232664611, 155235252, 40734202, 155235843, 
+                      161768452, 155236246),
+  Gene = c(
+    "FBRSL1",
+    "BST1",
+    "NUCKS1",
+    "WNT3",
+    "SNCA",
+    "BIN3",
+    "RIT2",
+    "GCH1",
+    "TRIM40",
+    "MCCC1",
+    "LRRK2",
+    "SIPA1L2",
+    "GBA",
+    "LRRK2",
+    "GBA",
+    "PARK2",
+    "GBA"
+  )
+) %>% 
+  mutate(
+    AltName = ifelse(rsID == "rs76763715", "i4000415", ""),
+    AlreadyInList = ifelse((rsID %in% rownames(rowData(NGRC_data.mae[["genotypes_dosages.se"]]))) | (AltName %in% rownames(rowData(NGRC_data.mae[["genotypes_dosages.se"]]))), "yes", "no")
+  ) %>% 
+  arrange(AlreadyInList)
 
+kbl(snp_data, caption = "List of variants found in FoxDen data repository. Grayed rows indicate variants already in our selection criteria in the GWAS catalog. Variants grayed") %>% 
+  kable_styling() %>% 
+  row_spec(row = grep("yes", snp_data$AlreadyInList), color = "gray")
+```
+
+### Big table in Nalls et al. 2024, Lancet Neurology
+
+Reference is [here](https://doi.org/10.1016/S1474-4422(19)30320-5)
+
+```{r}
+dataTable <- readxl::read_xlsx("../Data/GWAS_catalog_PD_variants/Nalls_2023_Table1Variants.xlsx") %>% 
+  mutate(AlreadyInList = ifelse(rsID %in% rownames(rowData(NGRC_data.mae[["genotypes_dosages.se"]])), "yes", "no")) %>% 
+  arrange(AlreadyInList) 
+
+kbl(dataTable, caption = "List of variants associated with PD reported as 'novel' in a mega GWAS by the authors in Nalls E.A. et al, 2024 (https://doi.org/10.1016/S1474-4422(19)30320-5). Grayed rows indicate variants already in our selection criteria in the GWAS catalog. Variants grayed. Input table was semi-automatically extracted fromTable 1 of the publication, mistakes cannot be excluded.") %>% 
+  kable_styling() %>% 
+  row_spec(row = grep("yes", dataTable$AlreadyInList), color = "gray")
 ```
