@@ -231,7 +231,7 @@ per_sample_dosages.df <- t(assay(UAB_data.mae, "genotypes_dosages.se"))[,rowname
 
 data_alltogether_Q1.df <- inner_join(
   # clustered bacteria variables
-  cluster_sums.df, 
+  cluster_sums.df %>% mutate_if(is.numeric, compositions::clr), 
   # variants available to test
   per_sample_dosages.df, by = "SubjectID") %>% 
   inner_join(
