@@ -1,3 +1,9 @@
+# 02-05-2025
+
+After several runs of code, we found inconsistencies in the GENE set enrichment analyses.
+It was caused by a wrong use of the `fgsea` package: in a lapply instance, setting a seed 
+should be done inside the lapply call. Now it is done and results are reproducible across script runs.
+
 # 01-31-2025
 
 This major rebumping of the reports includes the following changes:

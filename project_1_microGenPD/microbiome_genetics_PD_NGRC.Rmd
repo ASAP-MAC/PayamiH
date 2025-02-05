@@ -634,7 +634,7 @@ lm_results_in_Control.df %>%
   )
 ```
 
-# Approach 2 - Full MWAS followed by Gene Set Enrichment Analysis on same clusters
+# Approach 2 - Full MWAS followed by Microbe Set Enrichment Analysis on same clusters
 
 **Hypothesis**: Summing bacterial abundances to generate clusters, followed by `lm`
 may introduce both biological and modeling biases. A possible biological bias
@@ -647,7 +647,7 @@ depending on the case.
 **Aim**: To test all bacteria individually for interaction with variant and PD, 
 annotating them later to each cluster.
 
-**Method**: Gene set enrichment analysis (GSEA) Takes the strength of assocation 
+**Method**: Microbe Set Enrichment Analysis (MSEA) Takes the strength of assocation 
 between all bacteria/genes and an exposure (eg: interaction `PD x variant`), 
 ranks them from higher to lower, and tests whether it is more likely to find 
 more or less of them belonging to a grouping. This grouping could be fully agnostic
@@ -666,10 +666,12 @@ is significantly enriched or depleted, respectively. In practice, my approach is
   [Bioconductor](https://bioconductor.org/packages/release/bioc/html/fgsea.html).
 
 **NB: Only variants with at least 1 significantly enriched cluster are shown.**
-**Significance is defined as FDR P-value < 0.05**
+**Significance is defined as FDR Q-value < 0.05**
 
 ```{r}
-prevalence_curve <- assay(NGRC_data.mae, "metaphlan_Counts.se") %>% microbiome::prevalence() %>% sort(decreasing = TRUE) 
+prevalence_curve <- assay(NGRC_data.mae, "metaphlan_Counts.se") %>% 
+  microbiome::prevalence() %>% 
+  sort(decreasing = TRUE) 
 ```
 
 Also, filtering by prevalence results in considerable loss of taxa: 
@@ -679,12 +681,12 @@ are discarded. Note that **metaphlan_Counts** have 1 extra taxon compared to
 used as control, as we generally expect UNKNOWN taxa to encompass too many taxa 
 to return a clean signal.
 
-## Q1 - Interaction PD x variant GSEA
+## Q1 - Interaction PD x variant MSEA
 
 Significant associations in the `dosage:PD` term mean that the interaction between
 PD and genetic dosage is associated with bacterial abundance.
 
-Building on these results, a significant GSEA results for either of the clusters
+Building on these results, a significant MSEA results for either of the clusters
 tested would mean that there is a number of bacteria enriched/depleted together 
 belonging to the same cluster.
 
@@ -702,7 +704,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[, data_alltogether_Q1.df$SubjectID],
          meta.dat = data_alltogether_Q1.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + Case_status +", gt, "+", paste(gt, "Case_status", sep = "*")), 
+  formula = paste("~ Age_at_collection + seqs_scaled + Case_status +", gt, "+", paste(gt, "Case_status", sep = "*")), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -722,7 +724,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q1", "02_LinDA_regression_dosage.x.PD_FullResults.tsv"))
 ```
 
-### GSEA plot on interaction effects from interaction model {.tabset}
+### MSEA plot on interaction effects from interaction model {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -733,25 +735,29 @@ variant_PD_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") 
 
 library(fgsea)
 
-gsea_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) 
-                               fgsea(
-  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
-  stats = stats)) %>% 
-  lapply(function(x){
-    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
-    return(x)
-  })
+MSEA_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) {
+  set.seed(1234)
+  x <- fgsea(
+    pathways = split(
+      biomarkers_medrxiv.df$species_metaphlan,
+      biomarkers_medrxiv.df$cluster_name
+    ),
+    stats = stats
+  )
+  x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+  return(x)
+})
 
-gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant") %>% 
+MSEA_on_variant_PD_nice.df <- bind_rows(MSEA_on_variant_PD, .id = "snp_variant") %>% 
   rename(clusterName = pathway)
 
-write_tsv(gsea_on_variant_PD_nice.df, file = file.path(default_outdir, "Q1", "03_full_GSEA_results_interaction.tsv"))
+write_tsv(MSEA_on_variant_PD_nice.df, file = file.path(default_outdir, "Q1", "03_full_MSEA_results_interaction.tsv"))
 ```
 
 ```{r, results="asis"}
-gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+MSEA_on_variant_PD_someSignif <- MSEA_on_variant_PD[sapply(MSEA_on_variant_PD, function(x) any(x$padj < 0.05))]
 
-for (i in names(gsea_on_variant_PD_someSignif)) {
+for (i in names(MSEA_on_variant_PD_someSignif)) {
     cat("\n####", i, sep = " ")
       
     cat("\n")
@@ -771,7 +777,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
           biomarkers_medrxiv.df$cluster_name
         ),
         stats = variant_PD_t_stat[[i]],
-        fgseaRes = gsea_on_variant_PD_someSignif[[i]]
+        fgseaRes = MSEA_on_variant_PD_someSignif[[i]]
       )
     )
     cat("\n")
@@ -780,7 +786,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
 
 ### {-}
 
-### GSEA plot on variant-only effects from interaction model {.tabset}
+### MSEA plot on variant-only effects from interaction model {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -790,27 +796,30 @@ variant_only_t_stats <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output
 
 library(fgsea)
 
-gsea_on_variant_PD <- lapply(variant_only_t_stats, function(stats) 
-                               fgsea(
-  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
-  stats = stats)) %>% 
-  lapply(function(x){
-    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
-    
-    return(x)
-  })
+MSEA_on_variant_PD <- lapply(variant_only_t_stats, function(stats) {
+  set.seed(1234)
+  x <- fgsea(
+    pathways = split(
+      biomarkers_medrxiv.df$species_metaphlan,
+      biomarkers_medrxiv.df$cluster_name
+    ),
+    stats = stats
+  )
+  x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+  return(x)
+})
 
-gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant") %>% 
+MSEA_on_variant_PD_nice.df <- bind_rows(MSEA_on_variant_PD, .id = "snp_variant") %>% 
   rename(microbial_cluster = pathway)
 
-write_tsv(gsea_on_variant_PD_nice.df, path = file.path(default_outdir, "Q1", "03_full_GSEA_results_variantOnly.tsv"))
+write_tsv(MSEA_on_variant_PD_nice.df, path = file.path(default_outdir, "Q1", "03_full_MSEA_results_variantOnly.tsv"))
 
 ```
 
 ```{r, results="asis"}
-gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+MSEA_on_variant_PD_someSignif <- MSEA_on_variant_PD[sapply(MSEA_on_variant_PD, function(x) any(x$padj < 0.05))]
 
-for (i in names(gsea_on_variant_PD_someSignif)) {
+for (i in names(MSEA_on_variant_PD_someSignif)) {
     cat("\n####", i, sep = " ")
       
     cat("\n")
@@ -827,7 +836,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
       plotGseaTable(
       pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
       stats = variant_only_t_stats[[i]],
-      fgseaRes = gsea_on_variant_PD_someSignif[[i]])
+      fgseaRes = MSEA_on_variant_PD_someSignif[[i]])
       )
     cat("\n")
 }
@@ -851,7 +860,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[,data_alltogether_Q2.df$SubjectID],
          meta.dat = data_alltogether_Q2.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + ", gt), 
+  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -871,7 +880,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q2", "02_LinDA_regression_dosage_in_PD.tsv"))
 ```
 
-### GSEA plot on variant effect in PD {.tabset}
+### MSEA plot on variant effect in PD {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -881,26 +890,29 @@ variant_PD_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "output") 
 
 library(fgsea)
 
-gsea_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) 
-                               fgsea(
-  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
-  stats = stats)) %>% 
-  lapply(function(x){
-    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
-   
-    return(x)
-  })
+MSEA_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) {
+  set.seed(1234)
+  x <- fgsea(
+    pathways = split(
+      biomarkers_medrxiv.df$species_metaphlan,
+      biomarkers_medrxiv.df$cluster_name
+    ),
+    stats = stats
+  )
+  x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+  return(x)
+})
 
-gsea_on_variant_PD_nice.df <- bind_rows(gsea_on_variant_PD, .id = "snp_variant") %>% 
+MSEA_on_variant_PD_nice.df <- bind_rows(MSEA_on_variant_PD, .id = "snp_variant") %>% 
   rename(microbial_cluster = pathway)
 
-write_tsv(gsea_on_variant_PD_nice.df, path = file.path(default_outdir, "Q2", "03_full_GSEA_results_variant_in_PD.tsv"))
+write_tsv(MSEA_on_variant_PD_nice.df, path = file.path(default_outdir, "Q2", "03_full_MSEA_results_variant_in_PD.tsv"))
 ```
 
 ```{r, results="asis"}
-gsea_on_variant_PD_someSignif <- gsea_on_variant_PD[sapply(gsea_on_variant_PD, function(x) any(x$padj < 0.05))]
+MSEA_on_variant_PD_someSignif <- MSEA_on_variant_PD[sapply(MSEA_on_variant_PD, function(x) any(x$padj < 0.05))]
 
-for (i in names(gsea_on_variant_PD_someSignif)) {
+for (i in names(MSEA_on_variant_PD_someSignif)) {
     cat("\n####", i, sep = " ")
       
     cat("\n")
@@ -917,7 +929,7 @@ for (i in names(gsea_on_variant_PD_someSignif)) {
       plotGseaTable(
       pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
       stats = variant_PD_t_stat[[i]],
-      fgseaRes = gsea_on_variant_PD_someSignif[[i]])
+      fgseaRes = MSEA_on_variant_PD_someSignif[[i]])
       )
     cat("\n")
 }
@@ -941,7 +953,7 @@ genotypes_vs_microbiome_linda.list <- sapply(grep("^chr", colnames(data_alltoget
        suppressMessages(linda(
          feature.dat = assay(NGRC_data.mae, "metaphlan_Counts.se")[,data_alltogether_Q3.df$SubjectID],
          meta.dat = data_alltogether_Q3.df,
-  formula = paste("~ Age_at_collection + seqs_scaled + stool_travel_time + ", gt), 
+  formula = paste("~ Age_at_collection + seqs_scaled + ", gt), 
   p.adj.method = "BH",
   corr.cut = 0.1,
   outlier.pct = 0.03, 
@@ -961,7 +973,7 @@ linda_results_wrangled_variants_SNCA_HLA.df <- lapply(genotypes_vs_microbiome_li
 write_tsv(linda_results_wrangled_variants_SNCA_HLA.df, file = file.path(default_outdir, "Q3", "02_LinDA_regression_dosage_in_Controls.tsv"))
 ```
 
-### GSEA plot on variant effect in Controls {.tabset}
+### MSEA plot on variant effect in Controls {.tabset}
 
 ```{r}
 # fgsea on variant only effects
@@ -971,26 +983,29 @@ variant_Control_t_stat <- lapply(genotypes_vs_microbiome_linda.list, "[[", "outp
 
 library(fgsea)
 
-gsea_on_variant_Control <- lapply(variant_Control_t_stat, function(stats) 
-                               fgsea(
-  pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name),
-  stats = stats)) %>% 
-  lapply(function(x){
-    x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
-    
-    return(x)
-  })
+MSEA_on_variant_Control <- lapply(variant_Control_t_stat, function(stats) {
+  set.seed(1234)
+  x <- fgsea(
+    pathways = split(
+      biomarkers_medrxiv.df$species_metaphlan,
+      biomarkers_medrxiv.df$cluster_name
+    ),
+    stats = stats
+  )
+  x$leadingEdge <- sapply(x$leadingEdge, paste, collapse = "; ")
+  return(x)
+})
 
-gsea_on_variant_Control_nice.df <- bind_rows(gsea_on_variant_Control, .id = "snp_variant") %>% 
+MSEA_on_variant_Control_nice.df <- bind_rows(MSEA_on_variant_Control, .id = "snp_variant") %>% 
   rename(microbial_cluster = pathway)
 
-write_tsv(gsea_on_variant_Control_nice.df, path = file.path(default_outdir, "Q3", "03_full_GSEA_results_variant_in_Controls.tsv"))
+write_tsv(MSEA_on_variant_Control_nice.df, path = file.path(default_outdir, "Q3", "03_full_MSEA_results_variant_in_Controls.tsv"))
 ```
 
 ```{r, results="asis"}
-gsea_on_variant_Control_someSignif <- gsea_on_variant_Control[sapply(gsea_on_variant_Control, function(x) any(x$padj < 0.05))]
+MSEA_on_variant_Control_someSignif <- MSEA_on_variant_Control[sapply(MSEA_on_variant_Control, function(x) any(x$padj < 0.05))]
 
-for (i in names(gsea_on_variant_Control_someSignif)) {
+for (i in names(MSEA_on_variant_Control_someSignif)) {
     cat("\n####", i, sep = " ")
       
     cat("\n")
@@ -1007,7 +1022,7 @@ for (i in names(gsea_on_variant_Control_someSignif)) {
       plotGseaTable(
       pathways = split(biomarkers_medrxiv.df$species_metaphlan, biomarkers_medrxiv.df$cluster_name), 
       stats = variant_Control_t_stat[[i]],
-      fgseaRes = gsea_on_variant_Control_someSignif[[i]])
+      fgseaRes = MSEA_on_variant_Control_someSignif[[i]])
       )
     cat("\n")
 }
@@ -1017,6 +1032,7 @@ for (i in names(gsea_on_variant_Control_someSignif)) {
 
 # Results highlights
 
+To be done
 
 # Future directions
 
