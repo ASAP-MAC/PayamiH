@@ -1,0 +1,59 @@
+---
+title: "Multi-dataset replicability of results"
+author: "Giacomo Antonello, Zachary D. Wallen, Charles F. Murchinson, Levi Waldron, Haydeh Payami"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    toc_depth: 3
+    code_folding: hide
+    toc_float: true
+    number_sections: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    use_bookdown: true
+    highlight: haddock
+---
+
+# Approach 1 - Clusters
+
+```{r knitr preferences, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE
+)
+```
+
+
+```{r library load}
+library(tidyverse)
+```
+
+No interaction term was ever significant accounting for all independent tests
+as defined before ($N_{clusters} \times N_{indep.Variants}$).
+
+```{r data load}
+interaction_raw_results <- list(
+  DoD = read_tsv("output_DoD/Q1/01_lm_interaction_Variant.x.PD.tsv"),
+  NGRC = read_tsv("output_NGRC/Q1/01_lm_interaction_Variant.x.PD.tsv"),
+  UAB = read_tsv("output_UAB/Q1/01_lm_interaction_Variant.x.PD.tsv")
+) %>% 
+  lapply(filter, grepl(":", term))
+
+lapply(interaction_raw_results, filter, p.adj_bonferroni < 0.1)
+```
+
+For completeness, check associations with raw p-values too
+
+```{r}
+interaction_raw_results <- list(
+  DoD = read_tsv("output_DoD/Q1/01_lm_interaction_Variant.x.PD.tsv"),
+  NGRC = read_tsv("output_NGRC/Q1/01_lm_interaction_Variant.x.PD.tsv"),
+  UAB = read_tsv("output_UAB/Q1/01_lm_interaction_Variant.x.PD.tsv")
+) %>% 
+  lapply(filter, grepl(":", term))
+
+lapply(interaction_raw_results, filter, p.value < 0.05)
+```
+
