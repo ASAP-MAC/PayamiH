@@ -1,4 +1,4 @@
-snp_variant	microbial_cluster	pval	padj	log2err	ES	NES	size	leadingEdge
+snp_variant	clusterName	pval	padj	log2err	ES	NES	size	leadingEdge
 chr4_89587189_T_G	Bifidobacteria	0.043272015770107974	0.09227271767173305	0.3217759180753611	0.7451293160942711	1.539435701926203	5	s__Bifidobacterium_pullorum; s__Bifidobacterium_dentium; s__Bifidobacterium_breve
 chr4_89587189_T_G	E. coli-Klebsiella	0.7186147186147186	0.8623376623376623	0.06479433660007268	0.44879526141517095	0.7917559645305627	3	s__Escherichia_coli
 chr4_89587189_T_G	Fiber Degraders	0.005047217690549729	0.030283306143298376	0.40701791892395395	-0.6184138400891848	-1.8090982586937912	16	s__Fusicatenibacter_saccharivorans; s__Anaerostipes_hadrus; s__Eubacterium_ramulus; s__Faecalibacterium_prausnitzii; s__Roseburia_faecis; s__Eubacterium_hallii; s__Eubacterium_eligens; s__Clostridium_sp_CAG_58; s__Blautia_wexlerae
