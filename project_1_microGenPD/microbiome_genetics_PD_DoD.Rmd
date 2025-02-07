@@ -801,7 +801,7 @@ MSEA_on_variant_PD <- lapply(variant_only_t_stats, function(stats) {
 })
 
 MSEA_on_variant_PD_nice.df <- bind_rows(MSEA_on_variant_PD, .id = "snp_variant") %>% 
-  rename(microbial_cluster = pathway)
+  rename(clusterName = pathway)
 
 write_tsv(MSEA_on_variant_PD_nice.df, path = file.path(default_outdir, "Q1", "03_full_MSEA_results_variantOnly.tsv"))
 
@@ -895,7 +895,7 @@ MSEA_on_variant_PD <- lapply(variant_PD_t_stat, function(stats) {
 })
 
 MSEA_on_variant_PD_nice.df <- bind_rows(MSEA_on_variant_PD, .id = "snp_variant") %>% 
-  rename(microbial_cluster = pathway)
+  rename(clusterName = pathway)
 
 write_tsv(MSEA_on_variant_PD_nice.df, path = file.path(default_outdir, "Q2", "03_full_MSEA_results_variant_in_PD.tsv"))
 ```
@@ -988,7 +988,7 @@ MSEA_on_variant_Control <- lapply(variant_Control_t_stat, function(stats) {
 })
 
 MSEA_on_variant_Control_nice.df <- bind_rows(MSEA_on_variant_Control, .id = "snp_variant") %>% 
-  rename(microbial_cluster = pathway)
+  rename(clusterName = pathway)
 
 write_tsv(MSEA_on_variant_Control_nice.df, path = file.path(default_outdir, "Q3", "03_full_MSEA_results_variant_in_Controls.tsv"))
 ```

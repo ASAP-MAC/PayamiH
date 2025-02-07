@@ -1,5 +1,5 @@
 ---
-title: "Multi-dataset replicability of results"
+title: "Multi-dataset replicability of genetics vs PD associations"
 author: "Giacomo Antonello, Zachary D. Wallen, Charles F. Murchinson, Levi Waldron, Haydeh Payami"
 date: "`r Sys.Date()`"
 output:
@@ -16,8 +16,6 @@ output:
     highlight: haddock
 ---
 
-# Approach 1 - Clusters
-
 ```{r knitr preferences, echo=FALSE}
 knitr::opts_chunk$set(
   message = FALSE, 
@@ -25,35 +23,496 @@ knitr::opts_chunk$set(
 )
 ```
 
-
 ```{r library load}
 library(tidyverse)
+library(reactable)
+
 ```
+
+
+# Interaction `variant x PD`
+
+## Approach 1 -  Clusters abundance
+
+```{r}
+approach1_interaction_raw_results <- list(
+  DoD = read_tsv("output_DoD/Q1/01_lm_interaction_Variant.x.PD.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q1/01_lm_interaction_Variant.x.PD.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q1/01_lm_interaction_Variant.x.PD.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl(":", term))
+```
+
+### Significance based on Bonferroni-adjusted P-values
 
 No interaction term was ever significant accounting for all independent tests
 as defined before ($N_{clusters} \times N_{indep.Variants}$).
 
-```{r data load}
-interaction_raw_results <- list(
-  DoD = read_tsv("output_DoD/Q1/01_lm_interaction_Variant.x.PD.tsv"),
-  NGRC = read_tsv("output_NGRC/Q1/01_lm_interaction_Variant.x.PD.tsv"),
-  UAB = read_tsv("output_UAB/Q1/01_lm_interaction_Variant.x.PD.tsv")
-) %>% 
-  lapply(filter, grepl(":", term))
-
-lapply(interaction_raw_results, filter, p.adj_bonferroni < 0.1)
+```{r}
+tmp <- lapply(approach1_interaction_raw_results, filter, p.adj_bonferroni < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
 ```
 
-For completeness, check associations with raw p-values too
+```{r}
+tmp$DoD
+```
 
 ```{r}
-interaction_raw_results <- list(
-  DoD = read_tsv("output_DoD/Q1/01_lm_interaction_Variant.x.PD.tsv"),
-  NGRC = read_tsv("output_NGRC/Q1/01_lm_interaction_Variant.x.PD.tsv"),
-  UAB = read_tsv("output_UAB/Q1/01_lm_interaction_Variant.x.PD.tsv")
-) %>% 
-  lapply(filter, grepl(":", term))
+tmp$NGRC
+```
 
-lapply(interaction_raw_results, filter, p.value < 0.05)
+```{r}
+tmp$UAB
+```
+
+### Conclusions of approach 1 (ClusterSum)
+
+  * Within dataset:
+    - There were no Bonferroni-adjusted interaction associations
+  * Across datasets:
+    - No overlap of the few associations marginally significant considering raw
+    p-values.
+    
+## Approach 2 - Regression of each microbe, followed by Microbe Set Enrichment analysis
+
+### LinDA association only
+
+```{r}
+approach2_interaction_linda <- list(
+  DoD = read_tsv("output_DoD/Q1/02_LinDA_regression_dosage.x.PD_FullResults.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q1/02_LinDA_regression_dosage.x.PD_FullResults.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q1/02_LinDA_regression_dosage.x.PD_FullResults.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl("interactionPD", covariate)) 
+
+```
+
+```{r, results="asis"}
+
+tables_as_list <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(select, -lfcSE, -reject, -df, -covariate) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
+
+
+```
+
+```{r}
+tables_as_list$DoD
+```
+
+```{r}
+tables_as_list$NGRC
+```
+
+```{r}
+tables_as_list$UAB
+```
+
+Are there cases where the same variant:PD interaction term is significantly 
+associated with the same bacterium in more than one dataset?
+
+```{r}
+tmp <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("taxon", "variantName"))
+
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("log2FoldChange")))) < 2,]
+
+linda_intersection_also_nonsignif <- approach2_interaction_linda %>% 
+  lapply(filter, variantName %in% associations_replic$variantName, taxon %in% associations_replic$taxon) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+
+reactable(linda_intersection_also_nonsignif)
+```
+
+There are not replications of associations across datasets, but multiple ones 
+in each separately.
+
+### Microbe Set Enrichment Analysis with LinDA `statistic`s
+
+```{r}
+approach2_linda_MSEA <- list(
+  DoD = read_tsv("output_DoD/Q1/03_full_MSEA_results_interaction.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q1/03_full_MSEA_results_interaction.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q1/03_full_MSEA_results_interaction.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset)
+```
+
+Below is the table of union of Microbe sets enriched or depleted across
+the three datasets.
+
+```{r}
+approach2_linda_MSEA  %>%  
+  lapply(filter, padj < 0.1) %>% 
+  lapply(select, -leadingEdge) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant")) %>% 
+  mutate_if(is.numeric, round, 4) %>% 
+  reactable()
+```
+
+To better view the degree of replication, let's plot all and show where
+FDR q-values are less than 0.1.
+
+```{r, fig.caption = "Plot of variants with at least 2 datasets associated in MSEA using linda t-statistics on the interaction term. Semi-transparent bars indicate datasets with non-significant enrichment or depletion for that specific bacterial cluster and variant. Dotted lines indicate an arbitrary threshold of microbe set enrichment at |NES| > 1.2"}
+tmp <- approach2_linda_MSEA %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant"))
+
+# restrict to rows that have at least 2 datasets replicated
+# that is the row must contain between 0 and 1 NAs
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("NES")))) < 2,]
+
+
+MSEA_intersection_also_nonsignif <- approach2_linda_MSEA %>% 
+  lapply(filter, snp_variant %in% associations_replic$snp_variant, clusterName %in% associations_replic$clusterName) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+  
+NES_barplot <- ggplot(MSEA_intersection_also_nonsignif, aes(x = clusterName, y = NES, fill = Dataset)) + 
+  geom_col(position = position_dodge(), mapping = aes(alpha = alpha)) +
+facet_wrap(~snp_variant) + 
+  theme_light() + 
+  geom_hline(yintercept = 1.2, col = "black", lty = "dotted") +
+  geom_hline(yintercept = -1.2, col = "black", lty = "dotted") + 
+  guides(alpha = "none") + 
+  scale_fill_manual(values = ggsci::pal_jco()(4)[c(4,1,2)])
+
+NES_barplot
+```
+
+### Conclusions from approach 2 (MSEA)
+
+  * Four Variants show a significant enrichment of Opportunistic pathogens in 
+  NGRC and UAB but not in DoD. 
+  
+  * Variant bottom right, which showed an interesting association with Fiber degraders 
+  as `clusterSum` exclusively in DoD, shows a normalized depletion even stronger
+  in NGRC, which would have been overlooked.
+  
+  * All in all, dataset specificity is still driving a large portion of the 
+  microbiome variability, more than PD interaction with genetic variants can 
+  capture with such small sample size.
+  
+  * Of note, while single interactions are maybe weak, we should consider additive
+  effects of multiple variants in PD patients.
+  
+# Variant effect on PD
+
+## Approach 1 -  Clusters abundance
+
+```{r}
+approach1_interaction_raw_results <- list(
+  DoD = read_tsv("output_DoD/Q2/01_lm_dosage_in_PD.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q2/01_lm_dosage_in_PD.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q2/01_lm_dosage_in_PD.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl(":", term))
+```
+
+### Significance based on Bonferroni-adjusted P-values
+
+No interaction term was ever significant accounting for all independent tests
+as defined before ($N_{clusters} \times N_{indep.Variants}$).
+
+```{r}
+tmp <- lapply(approach1_interaction_raw_results, filter, p.adj_bonferroni < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
+```
+
+```{r}
+tmp$DoD
+```
+
+```{r}
+tmp$NGRC
+```
+
+```{r}
+tmp$UAB
+```
+
+### Conclusions of approach 1 (ClusterSum)
+
+  * Within dataset:
+    - There were no variant associations with ClusterSums in each dataset,
+    in any of the two significance thresholds chosen
+  * Across datasets:
+    - There were not associations within dataset that could be discussed
+    
+## Approach 2 - Regression of each microbe, followed by Microbe Set Enrichment analysis
+
+### LinDA association only
+
+```{r}
+approach2_interaction_linda <- list(
+  DoD = read_tsv("output_DoD/Q2/02_LinDA_regression_dosage_in_PD.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q2/02_LinDA_regression_dosage_in_PD.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q2/02_LinDA_regression_dosage_in_PD.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl("interactionPD", covariate)) 
+
+```
+
+```{r, results="asis"}
+
+tables_as_list <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(select, -lfcSE, -reject, -df, -covariate) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
+
+```
+
+```{r}
+tables_as_list$DoD
+```
+
+```{r}
+tables_as_list$NGRC
+```
+
+```{r}
+tables_as_list$UAB
+```
+
+Are there cases where the same variant association term in PD is significantly 
+associated with the same bacterium in more than one dataset?
+
+```{r}
+tmp <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("taxon", "variantName"))
+
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("log2FoldChange")))) < 2,]
+
+linda_intersection_also_nonsignif <- approach2_interaction_linda %>% 
+  lapply(filter, variantName %in% associations_replic$variantName, taxon %in% associations_replic$taxon) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+
+reactable(linda_intersection_also_nonsignif)
+```
+
+There are not replications of associations across datasets, but multiple ones 
+in each separately.
+
+### Microbe Set Enrichment Analysis with LinDA `statistic`s
+
+```{r}
+approach2_linda_MSEA <- list(
+  DoD = read_tsv("output_DoD/Q2/03_full_MSEA_results_variant_in_PD.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q2/03_full_MSEA_results_variant_in_PD.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q2/03_full_MSEA_results_variant_in_PD.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset)
+```
+
+Below is the table of union of Microbe sets enriched or depleted across
+the three datasets.
+
+```{r}
+approach2_linda_MSEA  %>%  
+  lapply(filter, padj < 0.1) %>% 
+  lapply(select, -leadingEdge) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant")) %>% 
+  mutate_if(is.numeric, round, 4) %>% 
+  reactable()
+```
+
+To better view the degree of replication, let's plot all and show where
+FDR q-values are less than 0.1.
+
+```{r, fig.caption = "Plot of variants with at least 2 datasets associated in MSEA using linda t-statistics on the interaction term. Semi-transparent bars indicate datasets with non-significant enrichment or depletion for that specific bacterial cluster and variant. Dotted lines indicate an arbitrary threshold of microbe set enrichment at |NES| > 1.2"}
+tmp <- approach2_linda_MSEA %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant"))
+
+# restrict to rows that have at least 2 datasets replicated
+# that is the row must contain between 0 and 1 NAs
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("NES")))) < 2,]
+
+
+MSEA_intersection_also_nonsignif <- approach2_linda_MSEA %>% 
+  lapply(filter, snp_variant %in% associations_replic$snp_variant, clusterName %in% associations_replic$clusterName) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+  
+NES_barplot <- ggplot(MSEA_intersection_also_nonsignif, aes(x = clusterName, y = NES, fill = Dataset)) + 
+  geom_col(position = position_dodge(), mapping = aes(alpha = alpha)) +
+facet_wrap(~snp_variant) + 
+  theme_light() + 
+  geom_hline(yintercept = 1.2, col = "black", lty = "dotted") +
+  geom_hline(yintercept = -1.2, col = "black", lty = "dotted") + 
+  guides(alpha = "none") + 
+  scale_fill_manual(values = ggsci::pal_jco()(4)[c(4,1,2)])
+
+NES_barplot
+```
+
+
+# Variant effect on Controls (NHC)
+
+## Approach 1 -  Clusters abundance
+
+```{r}
+approach1_interaction_raw_results <- list(
+  DoD = read_tsv("output_DoD/Q3/01_lm_dosage_in_Controls.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q3/01_lm_dosage_in_Controls.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q3/01_lm_dosage_in_Controls.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl(":", term))
+```
+
+### Significance based on Bonferroni-adjusted P-values
+
+No interaction term was ever significant accounting for all independent tests
+as defined before ($N_{clusters} \times N_{indep.Variants}$).
+
+```{r}
+tmp <- lapply(approach1_interaction_raw_results, filter, p.adj_bonferroni < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
+```
+
+```{r}
+tmp$DoD
+```
+
+```{r}
+tmp$NGRC
+```
+
+```{r}
+tmp$UAB
+```
+
+### Conclusions of approach 1 (ClusterSum)
+
+  * Within dataset:
+    - There were no Bonferroni-adjusted interaction associations
+  * Across datasets:
+    - No overlap of the few associations marginally significant considering raw
+    p-values.
+    
+## Approach 2 - Regression of each microbe, followed by Microbe Set Enrichment analysis
+
+### LinDA association only
+
+```{r}
+approach2_interaction_linda <- list(
+  DoD = read_tsv("output_DoD/Q3/02_LinDA_regression_dosage_in_Controls.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q3/02_LinDA_regression_dosage_in_Controls.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q3/02_LinDA_regression_dosage_in_Controls.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset) %>% 
+  lapply(filter, grepl("interactionPD", covariate)) 
+
+```
+
+```{r, results="asis"}
+
+tables_as_list <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  lapply(mutate_if, is.numeric, round, 4) %>% 
+  lapply(select, -lfcSE, -reject, -df, -covariate) %>% 
+  lapply(reactable, sortable = TRUE, filterable = TRUE)
+
+```
+
+```{r}
+tables_as_list$DoD
+```
+
+```{r}
+tables_as_list$NGRC
+```
+
+```{r}
+tables_as_list$UAB
+```
+
+Are there cases where the same variant:PD interaction term is significantly 
+associated with the same bacterium in more than one dataset?
+
+```{r}
+tmp <- approach2_interaction_linda %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("taxon", "variantName"))
+
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("log2FoldChange")))) < 2,]
+
+linda_intersection_also_nonsignif <- approach2_interaction_linda %>% 
+  lapply(filter, variantName %in% associations_replic$variantName, taxon %in% associations_replic$taxon) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+
+reactable(linda_intersection_also_nonsignif)
+```
+
+There are not replications of associations across datasets, but multiple ones 
+in each separately.
+
+### Microbe Set Enrichment Analysis with LinDA `statistic`s
+
+```{r}
+approach2_linda_MSEA <- list(
+  DoD = read_tsv("output_DoD/Q3/03_full_MSEA_results_variant_in_Controls.tsv") %>% mutate(Dataset = "DoD"),
+  NGRC = read_tsv("output_NGRC/Q3/03_full_MSEA_results_variant_in_Controls.tsv") %>% mutate(Dataset = "NGRC"),
+  UAB = read_tsv("output_UAB/Q3/03_full_MSEA_results_variant_in_Controls.tsv") %>% mutate(Dataset = "UAB")
+) %>% 
+  lapply(relocate, Dataset)
+```
+
+Below is the table of union of Microbe sets enriched or depleted across
+the three datasets.
+
+```{r}
+approach2_linda_MSEA  %>%  
+  lapply(filter, padj < 0.1) %>% 
+  lapply(select, -leadingEdge) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant")) %>% 
+  mutate_if(is.numeric, round, 4) %>% 
+  reactable()
+```
+
+To better view the degree of replication, let's plot all and show where
+FDR q-values are less than 0.1.
+
+```{r, fig.caption = "Plot of variants with at least 2 datasets associated in MSEA using linda t-statistics on the interaction term. Semi-transparent bars indicate datasets with non-significant enrichment or depletion for that specific bacterial cluster and variant. Dotted lines indicate an arbitrary threshold of microbe set enrichment at |NES| > 1.2"}
+tmp <- approach2_linda_MSEA %>% 
+  lapply(filter, padj < 0.1) %>% 
+  reduce(full_join, by = c("clusterName", "snp_variant"))
+
+# restrict to rows that have at least 2 datasets replicated
+# that is the row must contain between 0 and 1 NAs
+associations_replic <- tmp[rowSums(is.na(select(tmp, contains("NES")))) < 2,]
+
+
+MSEA_intersection_also_nonsignif <- approach2_linda_MSEA %>% 
+  lapply(filter, snp_variant %in% associations_replic$snp_variant, clusterName %in% associations_replic$clusterName) %>% 
+  reduce(rbind.data.frame) %>% 
+  mutate(alpha = ifelse(padj < 0.1, 1, 0.5))
+  
+NES_barplot <- ggplot(MSEA_intersection_also_nonsignif, aes(x = clusterName, y = NES, fill = Dataset)) + 
+  geom_col(position = position_dodge(), mapping = aes(alpha = alpha)) +
+facet_wrap(~snp_variant) + 
+  theme_light() + 
+  geom_hline(yintercept = 1.2, col = "black", lty = "dotted") +
+  geom_hline(yintercept = -1.2, col = "black", lty = "dotted") + 
+  guides(alpha = "none") + 
+  scale_fill_manual(values = ggsci::pal_jco()(4)[c(4,1,2)])
+
+NES_barplot
 ```
 
