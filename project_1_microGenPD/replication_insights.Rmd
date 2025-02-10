@@ -29,7 +29,6 @@ library(reactable)
 
 ```
 
-
 # Interaction `variant x PD`
 
 ## Approach 1 -  Clusters abundance
