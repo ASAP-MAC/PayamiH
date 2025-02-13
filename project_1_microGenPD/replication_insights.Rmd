@@ -26,6 +26,7 @@ knitr::opts_chunk$set(
 ```{r library load}
 library(tidyverse)
 library(reactable)
+library(ggpubr)
 
 ```
 
@@ -514,5 +515,90 @@ facet_wrap(~snp_variant) +
   scale_fill_manual(values = ggsci::pal_jco()(4)[c(4,1,2)])
 
 NES_barplot
+```
+
+# Datasets uniformity check
+
+## PCoA of 3 datasets, do their compositions differ?
+
+```{r}
+library(mia)
+load("../Data/DoD_data.mae.RData")
+load("../Data/NGRC_data.mae.RData")
+load("../Data/UAB_data.mae.RData")
+
+relabunds_summExp.list <- list(
+  DoD = DoD_data.mae[["metaphlan_RelAbund.se"]],
+  NGRC = NGRC_data.mae[["metaphlan_RelAbund.se"]],
+  UAB = UAB_data.mae[["metaphlan_RelAbund.se"]]
+) 
+
+relabunds_summExp.list$DoD$Dataset <- "DoD"
+relabunds_summExp.list$NGRC$Dataset <- "NGRC"
+relabunds_summExp.list$UAB$Dataset <- "UAB"
+
+data_together.se <- mia::mergeSEs(relabunds_summExp.list, assay.type = "metaphlan_RelAbund")
+
+NMDS.df <- getNMDS(data_together.se, assay.type = "metaphlan_RelAbund", name = "NMDS") %>% 
+  as.data.frame() %>% 
+  set_names(c("NMDS.1", "NMDS.2")) %>% 
+  rownames_to_column("SubjectID") %>% 
+  dplyr::full_join(as.data.frame(colData(data_together.se)), by = "SubjectID") %>% 
+  dplyr::full_join(
+    as.data.frame(t(assay(data_together.se))) %>%
+      rownames_to_column("SubjectID"),
+    by = "SubjectID"
+    )
+
+plot_colDataset <- ggplot(NMDS.df, aes(x = NMDS.1, y = NMDS.2, color = Dataset)) + 
+  geom_point() + 
+  scale_color_manual(values = c("skyblue4", "pink2", "green4")) +
+  stat_ellipse() +
+  theme_light() +
+  theme(legend.position = "top")
+
+plotcolPD <- ggplot(NMDS.df, aes(x = NMDS.1, y = NMDS.2, color = Case_status)) + 
+  geom_point() + 
+  scale_color_manual(values = c("steelblue3", "gold3")) +
+  stat_ellipse() +
+  theme_light() +
+  theme(legend.position = "top")
+
+plotcolStoolTravelTime <- ggplot(NMDS.df, aes(x = NMDS.1, y = NMDS.2, color = stool_travel_time)) + 
+  geom_point() + 
+  theme_light() +
+  scale_color_viridis_c(direction = -1) +
+  theme(legend.position = "top")
+
+plotcolEcoli <- ggplot(NMDS.df, aes(x = NMDS.1, y = NMDS.2, color = s__Escherichia_coli)) + 
+  geom_point() + 
+  theme_light() +
+  scale_color_viridis_c(direction = -1) +
+  theme(legend.position = "top")
+
+```
+
+```{r, fig.height = 10, fig.width=8}
+ggarrange(plotcolPD, plot_colDataset,plotcolStoolTravelTime, plotcolEcoli)
+```
+
+```{r, fig.height=10, fig.width=8}
+ggarrange(
+  ggplot(NMDS.df, aes(x = reorder(SubjectID, -s__Escherichia_coli), y = s__Escherichia_coli, fill = Case_status)) + 
+  geom_col() +
+  theme_light() +
+  scale_fill_manual(values = c("steelblue3", "gold3")) + 
+  facet_wrap(~ Dataset, scales = "free_x") + 
+  theme(axis.text.x = element_blank(), panel.grid = element_blank()),
+  
+ggplot(NMDS.df, aes(x = stool_travel_time, y = s__Escherichia_coli, color = Case_status)) + 
+  geom_point() +
+  facet_wrap(~Dataset) + 
+  theme_light() +
+  scale_color_manual(values = c("steelblue3", "gold3")) + 
+  stat_cor(method = "spearman", show.legend = FALSE),
+ncol = 1, 
+nrow = 2,
+common.legend = TRUE)
 ```
 
